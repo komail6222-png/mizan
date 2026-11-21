@@ -1,0 +1,66 @@
+[
+  {
+    "viewport": [
+      1280,
+      900
+    ],
+    "views": [
+      "procurement",
+      "inspection",
+      "energy",
+      "space-sanad",
+      "space-basira",
+      "space-rasid"
+    ],
+    "page_errors": 0,
+    "external_requests": 0,
+    "exported_receipts": 7,
+    "schedule_intervals": 24,
+    "receipts_verified_in_browser": 7,
+    "tampered_copy_rejected": true
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "views": [
+      "procurement",
+      "inspection",
+      "energy",
+      "space-sanad",
+      "space-basira",
+      "space-rasid"
+    ],
+    "page_errors": 0,
+    "external_requests": 0,
+    "exported_receipts": 7,
+    "schedule_intervals": 24,
+    "receipts_verified_in_browser": 7,
+    "tampered_copy_rejected": true
+  },
+  {
+    "viewport": [
+      1280,
+      900
+    ],
+    "views": [
+      "evaluation-report"
+    ],
+    "page_errors": 0,
+    "external_requests": 0,
+    "charts_with_tooltips": 4
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "views": [
+      "evaluation-report"
+    ],
+    "page_errors": 0,
+    "external_requests": 0,
+    "charts_with_tooltips": 4
+  }
+]

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mizan-ai-lab"
+version = "3.0.0"
+description = "Evidence-based procurement, calibrated surface inspection and risk-aware energy planning"
+requires-python = ">=3.12,<3.13"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+include = ["mizan*"]
+
+[tool.setuptools.package-data]
+mizan = ["web/*.html"]

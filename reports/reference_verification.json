@@ -1,0 +1,96 @@
+{
+  "all_passed": true,
+  "checks": {
+    "check_calibration": {
+      "evidence": {
+        "holdout_m4_k": 5,
+        "m18_k": 19,
+        "m19_k": 19,
+        "minimum_nontrivial_p_for_m4": 0.2
+      },
+      "status": "PASS"
+    },
+    "check_defect_evidence": {
+      "evidence": {
+        "assumptions": "fixed decision rule; independent representative defect trials",
+        "zero_misses_n299_upper_95": 0.009969146792899286,
+        "zero_misses_n3_upper_95": 0.6315968501359612
+      },
+      "status": "PASS"
+    },
+    "check_loo_dominance": {
+      "evidence": {
+        "enumerated_exchangeable_tuples": 256,
+        "scope": "scalar nearest-neighbor example; not a proof for arbitrary pipelines"
+      },
+      "status": "PASS"
+    },
+    "check_peak_counterexample": {
+      "evidence": {
+        "analytic_objective": "11 - 9*x, 0 <= x <= 1",
+        "baseline_cost": 11,
+        "baseline_peak": 1,
+        "optimal_cost": 2,
+        "optimal_peak": 2
+      },
+      "status": "PASS"
+    },
+    "check_risk_objective": {
+      "evidence": {
+        "A": {
+          "cvar": 100.0,
+          "expected": 50.0,
+          "objective": 75.0
+        },
+        "B": {
+          "cvar": 60.0,
+          "expected": 60.0,
+          "objective": 60.0
+        },
+        "fractional_tail_cvar": 46.0,
+        "negative_cost_cvar": -3.0
+      },
+      "status": "PASS"
+    },
+    "check_sqlite_fencing": {
+      "evidence": {
+        "aborted_promotion_atomic": true,
+        "accepted_result_rows_after_duplicate": 1,
+        "cancelled_worker_rows": 0,
+        "scope": "sequential interleavings, not a concurrent load or crash test",
+        "stale_promotion_rejected": true,
+        "stale_worker_rows": 0
+      },
+      "status": "PASS"
+    },
+    "check_unequal_quantile_quadrature": {
+      "evidence": {
+        "tail_integrals": "unspecified; neither is asserted to be full CRPS",
+        "trapezoid_on_0p05_to_0p95": 4.380000000000001,
+        "uniform_mean_proxy": 3.3600000000000003
+      },
+      "status": "PASS"
+    },
+    "check_wal_crash_and_backup": {
+      "evidence": {
+        "reopened_database": {
+          "after_commit": {
+            "audit_rows": 1,
+            "revision": 1
+          },
+          "before_commit": {
+            "audit_rows": 0,
+            "revision": 0
+          }
+        },
+        "scope": "abrupt process exit on local storage, excluding power loss and disk destruction",
+        "verified_online_backup": true
+      },
+      "status": "PASS"
+    }
+  },
+  "python": "3.12.14",
+  "scope": "Reference mathematics and small SQLite transaction checks only.",
+  "script_sha256": "6df02b4c1fb635f3c86e03bf22b82aaafd5e8cc8eaa28938b6be71e60bc09d90",
+  "sqlite": "3.53.1"
+}

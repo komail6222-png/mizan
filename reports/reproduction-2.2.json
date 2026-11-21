@@ -1,0 +1,68 @@
+{
+  "candidate_environment": {
+    "python": "3.13.18",
+    "numpy": "2.5.3",
+    "scipy": "1.18.1",
+    "sqlite": "3.53.1",
+    "platform": "Linux-6.18.44-fc-v726-x86_64-with-glibc2.39"
+  },
+  "reference": "reports/evaluation as bundled in release 2.1 (Python 3.12.14 recorded; NumPy/SciPy versions were not recorded by that run, requirements.txt pins 2.3.5/1.17.0)",
+  "candidate": "Release 2.2 rerun: OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python scripts/evaluate.py --days 60. SANAD rerun replaces reports/evaluation/sanad.json; full RASID rerun kept in reports/reproduction-2.2/rasid-rerun.json; BASIRA rerun is identical to the bundled file.",
+  "comparison": {
+    "sanad": {
+      "original_rows_identical": true,
+      "correct": [
+        36,
+        36
+      ],
+      "false_meets": [
+        0,
+        0
+      ],
+      "grammar_2_extension": {
+        "fixture_rows": 16,
+        "correct": 16,
+        "false_meets": 0,
+        "decisive": 9
+      }
+    },
+    "basira": {
+      "bank_digest_identical": true,
+      "p_values_identical": true,
+      "detected": [
+        40,
+        40
+      ],
+      "false_alerts": [
+        8,
+        8
+      ]
+    },
+    "rasid": {
+      "forecast_mae_identical_every_day": true,
+      "ridge_mae_kw": [
+        2.793685411438333,
+        2.793685411438333
+      ],
+      "candidate_total_cost": [
+        16444.137965929414,
+        16441.567916437605
+      ],
+      "seasonal_naive_total_cost": [
+        16401.89816163856,
+        16401.89816163856
+      ],
+      "candidate_minus_baseline": [
+        42.2398042908535,
+        39.66975479904431
+      ],
+      "verified_feasible_plans": [
+        120,
+        120
+      ],
+      "days_with_different_realized_cost": 22,
+      "first_divergent_day": "2026-02-12"
+    }
+  },
+  "interpretation": "SANAD and BASIRA reproduce exactly. RASID forecasts reproduce exactly. On 2026-02-12 the newer HiGHS build returns a different, independently verified optimum; carried battery state and month-to-date peak propagate this to 21 later days. Candidate total cost changes by -2.57 (0.016%). The conclusion is unchanged: lower forecast error, slightly higher realized cost than the seasonal baseline."
+}

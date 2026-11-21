@@ -1,0 +1,1 @@
+{"problem":{"assets":{"capacity":1,"cycles":1.0,"eta_c":1,"eta_d":1,"initial":0,"limit":10,"power":1,"terminal":0},"beta":0.9,"blocks":[],"flex":[],"hours":[1,1],"risk":0,"scenarios":[[[1,0],[1,0]]],"tariff":{"demand":1,"down":[0,0],"established":0,"overload":120.0,"price":[0,10],"shed":90.0,"up":[0,0],"wear":0},"weights":[1]}}

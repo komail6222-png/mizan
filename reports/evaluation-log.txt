@@ -1,0 +1,3 @@
+sanad {'fixture_rows': 36, 'distinct_language_template_pairs': 12, 'correct': 36, 'naive_numeric_correct': 24, 'false_meets': 0, 'decisive': 24, 'elapsed_seconds': 0.0218, 'fixture_only': True}
+basira {'test_items': 80, 'synthetic_normals': 40, 'synthetic_defects': 40, 'calibration_m': 24, 'detected': 40, 'false_alerts': 8, 'pixel_baseline_detected': 3, 'pixel_baseline_false_alerts': 1, 'elapsed_seconds': 1.0909, 'fixture_only': True}
+rasid {'target_days': 60, 'ridge_mae_kw': 2.793685411438333, 'seasonal_naive_mae_kw': 3.0680002777777773, 'candidate_total_cost': 16444.137965929414, 'seasonal_naive_total_cost': 16401.89816163856, 'verified_feasible_plans': 120, 'elapsed_seconds': 7.0544, 'fixture_only': True}

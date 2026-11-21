@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIZAN · AI engineering lab</title><style>
+:root{--ink:#142c37;--muted:#4e6771;--bg:#edf2ef;--card:#fff;--line:#d6e0da;--teal:#00685c;--pale:#ddf3e9;--warn:#81431a;--amber:#fff0d6;--blue:#3463a0}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#112c33;color:white;border-bottom:4px solid #46bb94}header>div,main,footer{max-width:1120px;margin:auto;padding:19px 28px}header>div{display:flex;align-items:center;justify-content:space-between}.brand{font-weight:800;font-size:21px;letter-spacing:.07em}.arab{font-size:18px;font-weight:500;color:#aadacb;margin-left:10px}.stamp{font-size:12px;color:#c4d6d4}main{padding-top:28px}h1{font-size:clamp(26px,5vw,43px);letter-spacing:-.045em;line-height:1.1;margin:12px 0}h2{font-size:21px;letter-spacing:-.03em;line-height:1.25;margin:3px 0 14px}h3{font-size:15px;margin:0 0 8px}p{margin:7px 0}.muted,.hint{color:var(--muted)}.hint{font-size:13px}
+nav{display:flex;gap:6px;padding-bottom:17px;border-bottom:1px solid var(--line);flex-wrap:wrap}button,select{font:inherit}nav button,.switch button,.dl{cursor:pointer;border-radius:8px;background:#fff;color:var(--ink);border:1px solid #b9cbc3;padding:8px 14px;min-height:41px;font-weight:650}nav button[aria-pressed=true],.switch button[aria-pressed=true]{color:white;background:var(--teal);border-color:var(--teal)}button:focus-visible,select:focus-visible{outline:3px solid #e0a22f;outline-offset:2px}.switch{display:flex;gap:5px;flex-wrap:wrap;margin:13px 0 19px}.switch button{font-size:13px;min-height:36px;padding:5px 12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:14px 0}.card{padding:20px;border-radius:12px;border:1px solid var(--line);background:var(--card);min-width:0}.wide{grid-column:1/-1}.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.kpi small{color:var(--muted);display:block}.kpi strong{font-size:clamp(19px,3vw,29px);letter-spacing:-.04em}.badge{display:inline-block;font-weight:700;font-size:12px;padding:3px 9px;border-radius:5px;background:var(--pale);color:#135d4e}.review{background:var(--amber);color:var(--warn)}.bad{background:#fbe6e3;color:#822d2c}
+.rule{display:flex;align-items:center;justify-content:space-between;width:100%;border:0;background:transparent;border-top:1px solid var(--line);padding:12px 2px;color:var(--ink);text-align:left;cursor:pointer}.rule[aria-pressed=true]{background:#eff9f4}.proof{border-left:3px solid #66ad92;padding:7px 11px;margin:12px 0;background:#f4f8f5}.proof q{font-size:17px;display:block;margin:5px 0}.mini{overflow-wrap:anywhere;font-size:12px;color:var(--muted);overflow-wrap:anywhere}.images{display:grid;grid-template-columns:1fr 1fr;gap:12px}figure{margin:0}figure img{width:100%;max-height:225px;object-fit:contain;background:#232927;border-radius:7px}figcaption{font-size:13px;margin-top:5px}.metricrow{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0;gap:12px}.mono{font-family:ui-monospace,monospace}.chart{width:100%;height:202px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:right;padding:6px 3px;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}details{margin:13px 0}summary{cursor:pointer;font-weight:650}.dl{margin:8px 0}.key{color:var(--teal);font-weight:700;font-size:12px;letter-spacing:.07em;text-transform:uppercase}footer{color:var(--muted);font-size:12px;padding-top:0}.hidden{display:none!important}.trust{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 14px;margin:0 0 16px}.trust .ok{background:#ddf3e9;color:#135d4e}.trust b{font-size:14px}.trust .hint{flex:1 1 320px;margin:0}.trust details{flex-basis:100%;margin:2px 0 0}.trust table td,.trust table th{text-align:left}.trust button{cursor:pointer;border-radius:8px;background:#fff;border:1px solid #b9cbc3;padding:5px 10px;font-weight:650;font-size:13px}
+@media(max-width:700px){.grid{grid-template-columns:1fr}.card{padding:15px}main,header>div,footer{padding-left:16px;padding-right:16px}.kpis{gap:5px}.kpi small{font-size:12px}.stamp{max-width:115px;text-align:right}.brand{font-size:18px}}
+</style></head><body><header><div><span class="brand">MIZAN <span lang="ar" class="arab">ميزان</span></span><span class="stamp">Local CPU · Synthetic fixtures</span></div></header>
+<main><section id="trust" class="trust" aria-live="polite"><span class="badge review">Verifying…</span><span class="hint">Recomputing every signature in this browser.</span></section><nav aria-label="Products" id="tabs"></nav><section id="view" aria-live="polite"></section>
+<details><summary>Run evidence</summary><p class="hint">Each result below was verified and committed by the local coordinator. This exhibit replays those recorded decisions.</p><div id="runs"></div><button class="dl" id="download">Download run JSON</button></details></main>
+<footer>MIZAN · Public sample data · Energy costs are illustrative currency units.</footer>
+<script type="application/json" id="data">%%DEMO_DATA%%</script>
+<script>
+'use strict';
+const evidenceJSON=document.querySelector('#data').textContent;const packet=JSON.parse(evidenceJSON), R=packet.results;
+const solo=document.documentElement.dataset.product;const domains=['SANAD','BASIRA','RASID'];let cur=0,policy=0,rule=0,sample=0,risk=0;
+const qs=s=>document.querySelector(s), el=(tag,cl,txt)=>{const n=document.createElement(tag);if(cl)n.className=cl;if(txt!==undefined)n.textContent=txt;return n;};
+function put(root,tag,cl,txt){const n=el(tag,cl,txt);root.append(n);return n}
+function btn(root,label,pressed,cb,cl=''){const b=put(root,'button',cl,label);b.type='button';b.setAttribute('aria-pressed',String(pressed));b.onclick=cb;return b}
+function card(root,title,wide=false){let n=put(root,'div','card'+(wide?' wide':''));put(n,'h2','',title);return n}
+function intro(box,key,title,sub){put(box,'div','key',key);put(box,'h1','',title);put(box,'p','muted',sub)}
+function switches(box,labels,idx,set){let g=put(box,'div','switch');labels.forEach((s,i)=>btn(g,s,i===idx,()=>{set(i);render()}))}
+function badge(n,s){return put(n,'span','badge '+(['REVIEW','ADVISORY_INSUFFICIENT_NORMALS'].includes(s)?'review':s==='DOES_NOT_MEET'||s==='FLAG'?'bad':''),s.replaceAll('_',' '))}
+function kpis(n,items){const row=put(n,'div','kpis');for(const [key,value] of items){const c=put(row,'div','kpi');put(c,'small','',key);put(c,'strong','',String(value))}}
+function metric(n,k,v){const row=put(n,'div','metricrow');put(row,'span','muted',k);put(row,'strong','',v)}
+function plot(host,series){const labels=put(host,'p','hint');series.forEach(s=>{const l=put(labels,'span','',s[0]+'   ');l.style.color=s[2];l.style.fontWeight='700'});
+ const cv=put(host,'canvas','chart');cv.setAttribute('role','img');cv.setAttribute('aria-label',series.map(s=>s[0]).join(' and ')+' across forecast hours');
+ const w=700,h=190;cv.width=w*2;cv.height=h*2;const c=cv.getContext('2d');c.scale(2,2);const vs=series.flatMap(x=>x[1]),hi=Math.max(1,...vs)*1.05,lo=Math.min(0,...vs),px=i=>42+i*(w-56)/(series[0][1].length-1||1),py=v=>h-24-(v-lo)*(h-41)/(hi-lo);
+ c.font='11px system-ui';c.fillStyle='#4e6771';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4,y=py(v);c.fillText(v.toFixed(0),3,y+4);c.strokeStyle='#d6e0da';c.beginPath();c.moveTo(38,y);c.lineTo(w-8,y);c.stroke()}
+ series.forEach(([name,a,color])=>{c.lineWidth=2.4;c.strokeStyle=color;c.beginPath();a.forEach((v,i)=>i?c.lineTo(px(i),py(v)):c.moveTo(px(i),py(v)));c.stroke()});c.fillStyle='#4e6771';series[0][1].forEach((v,i)=>{if(i%4===0)c.fillText(String(i).padStart(2,'0')+':00',px(i)-12,h-5)})
+}
+const names={apparent_power:'Rated apparent power',runtime_100:'Runtime at full load',efficiency_100:'Efficiency at full load',transfer_time:'Transfer time',active_power:'Rated active power'};
+function sanad(root){const original=R.evidence,d=policy?original.policy_comparison:original;
+ intro(root,'Bilingual procurement','Review an Atlas-20 bid','Two approved documents disagree about apparent power. Select a policy and inspect the exact wording behind each verdict.');
+ switches(root,['Check all sources','Prefer approved schedule'],policy,x=>policy=x);
+ const grid=put(root,'div','grid'),list=card(grid,'Tender requirements');
+ d.requirements.forEach((r,i)=>{const b=btn(list,'',i===rule,()=>{rule=i;render()},'rule');put(b,'span','',names[r.rule.attribute]+' '+(r.rule.op==='ge'?'≥ ':'≤ ')+r.rule.threshold+' '+r.rule.unit);badge(b,r.verdict)});
+ const proof=card(grid,'Source evidence'),r=d.requirements[rule];badge(proof,r.verdict);put(proof,'p','hint',r.reason.replaceAll('_',' ').toLowerCase());
+ r.evidence.forEach(c=>{const q=put(proof,'div','proof');put(q,'b','',c.document);const quote=put(q,'q','',c.quote);quote.dir='auto';put(q,'span','mini','Page '+c.page+' · characters '+c.start+'–'+c.end+' · '+c.source.slice(0,12))});
+ put(grid,'p','hint wide','Both policies reuse the same extraction. Extraction '+d.extraction_digest.slice(0,12)+' · Evaluation '+d.evaluation_digest.slice(0,12));
+}
+function basira(root){const keys=['crack','intact','scarce'],d=R[keys[sample]];
+ intro(root,'Few-shot inspection','Inspect a machined ring','Compare the query image with a bank of normal parts. The overlay shows the locations contributing to its anomaly score.');
+ switches(root,['Cracked ring','Intact ring','Only 4 calibration parts'],sample,x=>sample=x);
+ const grid=put(root,'div','grid'),images=card(grid,'Inspection image');const row=put(images,'div','images');
+ [[d.image_png,'Query image'],[d.overlay_png,'Anomaly overlay']].forEach(([src,name])=>{const f=put(row,'figure');const im=put(f,'img');im.alt=name;im.src='data:image/png;base64,'+src;put(f,'figcaption','hint',name)});
+ const stats=card(grid,'Calibration decision');badge(stats,d.decision);metric(stats,'Reference parts',d.reference_count);metric(stats,'Calibration parts',d.calibration_count);metric(stats,'Conformal p-value',d.p_numerator+' / '+d.p_denominator+' = '+d.p_value.toFixed(2));metric(stats,'Score / threshold',d.score.toFixed(3)+' / '+(d.threshold===null?'∞':d.threshold.toFixed(3)));
+ put(stats,'p','hint',d.threshold===null?'Four calibration parts give a minimum p-value of 0.20. A 5% alert cannot fire.':d.decision==='FLAG'?'The score crosses the frozen normal-alert threshold. Route this part to inspection.':'This part did not cross the normal-alert threshold. A reviewer decides whether it can pass.');
+ if(sample===1 && d.decision==='FLAG')put(stats,'p','hint','This generated ring is intact. Its alert is a false positive.');
+ put(grid,'p','hint wide','Generated ring images · Auto-PASS disabled · Bank '+d.bank_digest.slice(0,12));
+}
+function rasid(root){const d=risk?R.neutral:R.energy,c=d.certificate,p=d.plan,f=d.forecast;
+ intro(root,'Probabilistic energy planning','Schedule a site battery','A day-ahead plan uses paired load and solar scenarios. The verifier reconstructs battery physics, settlement and risk from the published plan.');
+ switches(root,['Risk weight 0.35','Risk-neutral'],risk,x=>risk=x);
+ const g=put(root,'div','grid'),sum=card(g,'Plan certificate',true);kpis(sum,[['Expected cost',c.expected_cost.toFixed(2)],['Tail cost · CVaR 90%',c.cvar.toFixed(2)],['Risk-adjusted cost',c.objective.toFixed(2)]]);put(sum,'p','hint',c.physical_status.replaceAll('_',' ')+' · '+f.residual_days+' prior daily error paths · '+d.problem.weights.length+' reduced scenarios');
+ const forecast=card(g,'Load and solar forecast');plot(forecast,[['Load (kW)',f.point.map(x=>x[0]),'#005f58'],['Solar (kW)',f.point.map(x=>x[1]),'#aa6216']]);
+ const schedule=card(g,'Battery state of charge');plot(schedule,[['State of charge (kWh)',p.soc.slice(0,-1),'#3463a0']]);metric(schedule,'Final state',p.soc.at(-1).toFixed(1)+' kWh');
+ const wrap=card(g,'Hourly schedule',true),dt=put(wrap,'details');put(dt,'summary','','Show 24 hourly decisions');const tab=put(dt,'table'),tr=put(tab,'tr');['UTC','Charge kW','Discharge kW','SoC kWh'].forEach(v=>put(tr,'th','',v));
+ p.charge.forEach((v,i)=>{const t=put(tab,'tr');[f.timestamps[i].slice(11,16),Math.abs(v).toFixed(2),Math.abs(p.discharge[i]).toFixed(2),p.soc[i].toFixed(2)].forEach(x=>put(t,'td','',x))})
+}
+function render(){qs('#tabs').replaceChildren();domains.forEach((s,i)=>{if(!solo||solo===s)btn(qs('#tabs'),s,i===cur,()=>{cur=i;render()})});let v=qs('#view');v.replaceChildren();[sanad,basira,rasid][cur](v)}
+packet.run.receipts.forEach(r=>put(qs('#runs'),'p','mini mono',r.fixture+' · rev '+r.deployment+' · sha256 '+r.result_digest));
+qs('#download').onclick=()=>{const url=URL.createObjectURL(new Blob([evidenceJSON],{type:'application/json'}));const a=el('a');a.href=url;a.download='mizan-demo-results.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+
+/* In-browser verification. The page recomputes Python-canonical JSON (sorted keys, compact separators, original
+   number spellings), the SHA-256 result digest, the signed execution context and the Ed25519 signature of every
+   receipt, using only the data embedded above. Nothing is fetched. */
+function parseRaw(text){let i=0;const NUM=/-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+ const ws=()=>{while(i<text.length&&' \t\n\r'.includes(text[i]))i++};
+ const str=()=>{const s=i;i++;while(text[i]!=='"'){if(text[i]==='\\')i++;i++}i++;return JSON.parse(text.slice(s,i))};
+ function val(){ws();const c=text[i];
+  if(c==='{'){i++;const k=[];ws();if(text[i]==='}'){i++;return{t:'o',k}}for(;;){ws();const key=str();ws();i++;k.push([key,val()]);ws();if(text[i++]===',')continue;return{t:'o',k}}}
+  if(c==='['){i++;const v=[];ws();if(text[i]===']'){i++;return{t:'a',v}}for(;;){v.push(val());ws();if(text[i++]===',')continue;return{t:'a',v}}}
+  if(c==='"')return{t:'s',v:str()};
+  for(const w of ['true','false','null'])if(text.startsWith(w,i)){i+=w.length;return{t:'l',raw:w}}
+  NUM.lastIndex=i;const m=NUM.exec(text);if(!m)throw new Error('Invalid JSON at '+i);i+=m[0].length;return{t:'n',raw:m[0]}}
+ return val()}
+const pyStr=s=>'"'+s.replace(/[\x00-\x1f\\"]/g,ch=>({'\\':'\\\\','"':'\\"','\b':'\\b','\f':'\\f','\n':'\\n','\r':'\\r','\t':'\\t'})[ch]||'\\u'+ch.charCodeAt(0).toString(16).padStart(4,'0'))+'"';
+const cpCmp=(a,b)=>{const x=Array.from(a,c=>c.codePointAt(0)),y=Array.from(b,c=>c.codePointAt(0));for(let j=0;j<Math.min(x.length,y.length);j++)if(x[j]!==y[j])return x[j]-y[j];return x.length-y.length};
+function canon(n){if(n.t==='o')return'{'+n.k.slice().sort((a,b)=>cpCmp(a[0],b[0])).map(([k,v])=>pyStr(k)+':'+canon(v)).join(',')+'}';
+ if(n.t==='a')return'['+n.v.map(canon).join(',')+']';return n.t==='s'?pyStr(n.v):n.raw}
+const field=(n,k)=>{const hit=n.k.find(e=>e[0]===k);if(!hit)throw new Error('Missing '+k);return hit[1]};
+const bytes=b64=>Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+async function sha256(data){const d=new Uint8Array(await crypto.subtle.digest('SHA-256',typeof data==='string'?new TextEncoder().encode(data):data));return Array.from(d,b=>b.toString(16).padStart(2,'0')).join('')}
+async function verifyPacket(root){const run=field(root,'run'),results=field(root,'results'),pub=bytes(field(run,'public_key_b64').v),fp=await sha256(pub);
+ if(fp!==field(run,'key_fingerprint').v)throw new Error('Embedded key does not match its fingerprint');
+ const key=await crypto.subtle.importKey('raw',pub,{name:'Ed25519'},false,['verify']),rows=[];
+ for(const r of field(run,'receipts').v){const label=field(r,'fixture').v,get=k=>field(r,k);let ok=false,why='';
+  try{const object=await sha256(canon(field(results,label)));
+   const context=await sha256('['+[pyStr(get('job').v),pyStr(get('input_digest').v),pyStr(get('profile_digest').v),get('deployment').raw,get('epoch').raw,pyStr(get('generation').v)].join(',')+']');
+   const body='{"context":'+pyStr(context)+',"key_id":'+pyStr(fp)+',"kind":"result","object":'+pyStr(object)+',"schema":"1","tenant":'+pyStr(get('tenant').v)+'}';
+   if(canon(field(get('seal'),'body'))!==body)why='result digest or execution context differs from the signed receipt';
+   else{ok=await crypto.subtle.verify({name:'Ed25519'},key,bytes(field(get('seal'),'signature').v),new TextEncoder().encode('MIZAN/local-publication/v1\u0000'+body));if(!ok)why='Ed25519 signature rejected'}
+   rows.push({label,ok,why,digest:object})}catch(e){rows.push({label,ok:false,why:String(e.message||e),digest:''})}}
+ return{fingerprint:fp,rows}}
+function tampered(root){const copy=JSON.parse(JSON.stringify(root)),first=field(field(copy,'run'),'receipts').v[0],res=field(field(copy,'results'),field(first,'fixture').v);
+ const walk=n=>{if(n.t==='n'){const d=n.raw.match(/\d(?=\D*$)/);n.raw=n.raw.replace(/\d(?=\D*$)/,String((+d[0]+1)%10));return true}return(n.k||[]).some(e=>walk(e[1]))||(n.v&&Array.isArray(n.v)&&n.v.some(walk))};
+ walk(res);return copy}
+function showTrust(box,report){box.replaceChildren();const good=report.rows.filter(r=>r.ok).length,all=report.rows.length;
+ put(box,'span','badge '+(good===all?'ok':'bad'),good===all?'✓ Verified in this browser':'✗ Verification failed');
+ put(box,'span','hint',good+' of '+all+' results: SHA-256 digest and Ed25519 signature recomputed from the embedded data. Signing key '+report.fingerprint.slice(0,8)+'…'+report.fingerprint.slice(-5)+'. Compare it with the fingerprint published in the README to establish who signed.');
+ const t=put(box,'button','','Try a tampered copy');t.type='button';t.onclick=async()=>{const r=(await verifyPacket(tampered(rawPacket))).rows[0];
+  t.textContent=r.ok?'Unexpected: tampering was not detected':'Tampered copy rejected: '+r.why;};
+ const d=put(box,'details');put(d,'summary','','Per-result checks');const tab=put(d,'table'),h=put(tab,'tr');['Result','Status','SHA-256'].forEach(x=>put(h,'th','',x));
+ report.rows.forEach(r=>{const row=put(tab,'tr');[r.label,r.ok?'✓ verified':'✗ '+r.why,r.digest.slice(0,16)].forEach(x=>put(row,'td','mono',x))})}
+const rawPacket=parseRaw(evidenceJSON);
+var mizanVerification=(async()=>{const box=qs('#trust');
+ if(typeof crypto==='undefined'||!crypto.subtle||typeof TextEncoder==='undefined'){if(box){box.replaceChildren();put(box,'span','badge review','Not verified here');put(box,'span','hint','This browser cannot run Ed25519 here. Verify offline: python -m mizan verify demo_results.json')}return null}
+ try{const report=await verifyPacket(rawPacket);if(box)showTrust(box,report);return report}
+ catch(e){if(box){box.replaceChildren();put(box,'span','badge review','Not verified here');put(box,'span','hint',String(e.message||e)+'. Verify offline: python -m mizan verify demo_results.json')}return{error:String(e)}}})();
+const preferred=solo||new URLSearchParams(location.search).get('product');if(domains.includes((preferred||'').toUpperCase()))cur=domains.indexOf(preferred.toUpperCase());render();
+</script></body></html>

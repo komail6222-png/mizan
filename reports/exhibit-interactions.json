@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "scope": "Node DOM harness with Node WebCrypto: event handlers and in-page receipt verification",
+  "spaces": {
+    "sanad": 1,
+    "basira": 3,
+    "rasid": 3
+  },
+  "signed_rows_exported": 7,
+  "receipts_verified_in_page": 7,
+  "tampered_copy_rejected": true,
+  "rasid_intervals": 24,
+  "native_browser_layout": "see scripts/check_exhibits.py"
+}

@@ -1,0 +1,179 @@
+{
+  "environment": {
+    "python": "3.13.18",
+    "numpy": "2.5.3",
+    "scipy": "1.18.1",
+    "sqlite": "3.53.1",
+    "platform": "Linux-x86_64"
+  },
+  "quick": false,
+  "simulation": {
+    "schedules": 1000,
+    "steps_per_schedule": 40,
+    "steps": 40000,
+    "crashes": 1217,
+    "publishes": 1108,
+    "stale_publishes_refused": 918,
+    "cancels": 1469,
+    "promotions": 603,
+    "violations": 0,
+    "failures": []
+  },
+  "simulation_mutants": {
+    "publication without epoch fence": {
+      "caught": true,
+      "schedules_with_violation": 15,
+      "example": "publish accepted=True but reference model says False"
+    },
+    "publication without cancellation fence": {
+      "caught": true,
+      "schedules_with_violation": 30,
+      "example": "heartbeat accepted=True but reference model says False"
+    }
+  },
+  "sanad": {
+    "base_cases": 600,
+    "checks": {
+      "R0_oracle": 600,
+      "R1_noise": 600,
+      "R2_isolation": 600,
+      "R3_language": 600,
+      "R4_order": 184,
+      "R5_controls": 600,
+      "R6_homoglyph": 600,
+      "R7_monotone": 869
+    },
+    "total_checks": 4653,
+    "violations": 0,
+    "examples": [],
+    "verdict_mix": {
+      "REVIEW": 607,
+      "DOES_NOT_MEET": 309,
+      "MEETS": 569
+    },
+    "seed": 30
+  },
+  "sanad_mutants": {
+    "coverage gaps ignored": {
+      "caught": true,
+      "violations": 10,
+      "relations": [
+        "R1_noise",
+        "R5_controls"
+      ]
+    },
+    "unknown qualifier read as exact": {
+      "caught": true,
+      "violations": 10,
+      "relations": [
+        "R0_oracle"
+      ]
+    },
+    "table reads the first model column": {
+      "caught": true,
+      "violations": 10,
+      "relations": [
+        "R2_isolation"
+      ]
+    },
+    "confusable characters folded into ASCII": {
+      "caught": true,
+      "violations": 10,
+      "relations": [
+        "R6_homoglyph"
+      ]
+    }
+  },
+  "basira": {
+    "trials": 3000,
+    "checks": {
+      "permutation": 3000,
+      "monotone_score": 3000,
+      "pac_implies_marginal": 3000
+    },
+    "violations": 0,
+    "exceedance_vs_monte_carlo": [
+      {
+        "m": 24,
+        "k": 24,
+        "exact": 0.2919890243387727,
+        "monte_carlo": 0.290925,
+        "z": -0.4680349657060946
+      },
+      {
+        "m": 50,
+        "k": 49,
+        "exact": 0.2794317523206958,
+        "monte_carlo": 0.28155,
+        "z": 0.944128912550618
+      },
+      {
+        "m": 50,
+        "k": 50,
+        "exact": 0.07694497527671333,
+        "monte_carlo": 0.074825,
+        "z": -1.5909512209629397
+      },
+      {
+        "m": 100,
+        "k": 96,
+        "exact": 0.4359813006857119,
+        "monte_carlo": 0.433975,
+        "z": -0.8091803624047649
+      },
+      {
+        "m": 100,
+        "k": 99,
+        "exact": 0.03708120932735521,
+        "monte_carlo": 0.035625,
+        "z": -1.5412817236176877
+      }
+    ],
+    "max_abs_z": 1.5909512209629397,
+    "monte_carlo_draws": 40000,
+    "seed": 31
+  },
+  "rasid": {
+    "problems": 200,
+    "solver_plans_verified": 200,
+    "statuses": {
+      "VERIFIED_FEASIBLE": 136,
+      "VERIFIED_RELAXED_DIAGNOSTIC": 64
+    },
+    "mutations_attempted": 1600,
+    "mutations_rejected": 1600,
+    "rejected_by_class": {
+      "scenario_cost": "200/200",
+      "state_of_charge": "200/200",
+      "grid_flow": "200/200",
+      "negative_charge": "200/200",
+      "fractional_mode": "200/200",
+      "objective": "200/200",
+      "non_finite": "200/200",
+      "missing_field": "200/200"
+    },
+    "missed_examples": [],
+    "seed": 32
+  },
+  "elapsed_seconds": {
+    "simulation": 39.39,
+    "simulation_mutants": 15.31,
+    "sanad": 2.21,
+    "sanad_mutants": 2.98,
+    "basira": 1.32,
+    "rasid": 1.71
+  },
+  "summary": {
+    "simulation_steps": 40000,
+    "simulation_violations": 0,
+    "simulation_mutants_caught": "2/2",
+    "sanad_checks": 4653,
+    "sanad_violations": 0,
+    "sanad_mutants_caught": "4/4",
+    "basira_checks": 9000,
+    "basira_violations": 0,
+    "basira_max_abs_z": 1.5909512209629397,
+    "rasid_plans_verified": "200/200",
+    "rasid_invalid_mutations_rejected": "1600/1600"
+  }
+}
