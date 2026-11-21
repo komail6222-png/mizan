@@ -1,7 +1,10 @@
-# Release 3.0 application tests
-# Python 3.13.18 · SQLite 3.53.1 · NumPy 2.5.3 · SciPy 1.18.1 · Linux x86_64
-# FastAPI/httpx were not installable in this environment (no network): the 2 HTTP tests are skipped, not passed.
+# Release 3.0 application tests — local verification run (21 November 2026)
+# Python 3.12.16 (uv) · SQLite 3.53.1 · NumPy 2.3.5 · SciPy 1.17.0 · FastAPI 0.141.1 · httpx 0.28.1 · PyMuPDF 1.26.6
+# Ubuntu 26.04.1 LTS under WSL2 (kernel 6.18.58.1) on Windows 11, Intel Core i7-13645HX, x86_64
+# All dependencies from requirements.txt were installed: the 2 HTTP tests executed and passed (no skips).
 # MCP conformance used the official mcp client 2.3.0.
+# Previous record (release build environment, Python 3.13.18, no network): 102 tests, 100 passed, 2 HTTP tests skipped.
+# Full context: reports/local-verification.md
 # Command: python -m unittest discover -s tests -v
 
 test_agents_only_see_their_own_jobs (test_agent.AgentBoundaryTests.test_agents_only_see_their_own_jobs) ... ok
@@ -11,8 +14,8 @@ test_signed_answers_verify_and_tampering_is_caught (test_agent.AgentBoundaryTest
 test_stream_framing_parse_errors_and_notifications (test_agent.AgentBoundaryTests.test_stream_framing_parse_errors_and_notifications) ... ok
 test_tool_list_is_complete_and_has_no_operator_actions (test_agent.AgentBoundaryTests.test_tool_list_is_complete_and_has_no_operator_actions) ... ok
 test_reference_client_can_discover_call_and_verify (test_agent.OfficialClientConformanceTests.test_reference_client_can_discover_call_and_verify) ... ok
-test_private_http_job_through_verified_worker (test_api.ApiTests.test_private_http_job_through_verified_worker) ... skipped 'FastAPI/httpx not installed: pip install -r requirements.txt'
-test_public_exhibit_does_not_open_a_store (test_api.ApiTests.test_public_exhibit_does_not_open_a_store) ... skipped 'FastAPI/httpx not installed: pip install -r requirements.txt'
+test_private_http_job_through_verified_worker (test_api.ApiTests.test_private_http_job_through_verified_worker) ... ok
+test_public_exhibit_does_not_open_a_store (test_api.ApiTests.test_public_exhibit_does_not_open_a_store) ... ok
 test_small_study_runs_and_matches_theory_fields (test_basira_pac.CalibrationStudyTests.test_small_study_runs_and_matches_theory_fields) ... ok
 test_bank_identity_is_unchanged_from_release_2_1 (test_basira_pac.EngineIdentityTests.test_bank_identity_is_unchanged_from_release_2_1) ... ok
 test_pac_request_end_to_end_and_old_engine_refused (test_basira_pac.EngineIdentityTests.test_pac_request_end_to_end_and_old_engine_refused) ... ok
@@ -108,6 +111,6 @@ test_rewritten_local_history_is_detected (test_witness.WitnessTests.test_rewritt
 test_witness_refuses_malformed_forked_and_foreign_batches (test_witness.WitnessTests.test_witness_refuses_malformed_forked_and_foreign_batches) ... ok
 
 ----------------------------------------------------------------------
-Ran 102 tests in 20.855s
+Ran 102 tests in 20.903s
 
-OK (skipped=2)
+OK

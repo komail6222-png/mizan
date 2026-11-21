@@ -84,9 +84,9 @@ The relations are strict: a non-evidential line or a control character must turn
 
 ## Evidence and limits
 
-- **Tests.** 102 tests: 100 executed and passed, 2 HTTP tests skipped without FastAPI (`reports/application-tests.txt`). New in 3.0: `test_agent.py`, `test_explain.py`, `test_safety.py`.
+- **Tests.** 102 tests. The release environment executed 100 and skipped 2 HTTP tests without FastAPI; the local verification run executed all 102 and all passed (`reports/application-tests.txt`, `reports/local-verification.md`). New in 3.0: `test_agent.py`, `test_explain.py`, `test_safety.py`.
 - **Generated data.** All inputs are generated fixtures; no claim here extends to real tenders, factories or tariffs.
 - **The simulation.** It covers one host and one broker process; it does not establish distributed failover.
 - **The MCP server.** It runs as the operator's OS user. Hostile-agent isolation beyond the tool surface (separate OS identity, sandboxing) is a deployment property.
 - **In-browser verification.** It proves the page's data matches its embedded key. Who holds that key is established only by comparing the fingerprint through a trusted channel.
-- **Not executed here.** The HTTP layer and the PDF path were not exercised, because FastAPI and PyMuPDF were unavailable.
+- **HTTP layer and PDF path.** Not exercised in the release environment, because FastAPI and PyMuPDF were unavailable. Both were executed in the local verification run (`reports/local-verification.md`): the private API with the operator token, rejection of missing and wrong tokens, idempotent resubmission, a 409 on a reused key with a different payload, and offline verification of the job result; and a generated text PDF through `scripts/import_inputs.py`, `approve-document`, `run`, `verify` and `explain`, moving from REVIEW before approval to MEETS after it. A scanned or commercially laid-out PDF has still not been tried.
