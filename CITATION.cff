@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use MIZAN, please cite it as below."
+title: "MIZAN: a trust layer for decisions in the age of AI agents"
+abstract: >-
+  Three local decision systems for bilingual procurement evidence review (SANAD),
+  calibrated visual inspection (BASIRA) and risk-aware energy planning (RASID).
+  Every answer is signed, explained only from its own proof, accompanied by
+  executed counterfactuals and verifiable offline or in a browser. AI agents can
+  use it through the Model Context Protocol without gaining authority.
+  All bundled datasets are generated fixtures.
+type: software
+authors:
+  - given-names: Komail
+    family-names: Ahmed
+version: 3.0.0
+date-released: 2026-11-21
+license: Apache-2.0
+repository-code: "https://github.com/komail6222-png/mizan"
+url: "https://komail6222-png.github.io/mizan/"
+keywords:
+  - ai-agents
+  - mcp
+  - conformal-prediction
+  - trustworthy-ai
+  - verifiable-computing
+  - arabic-nlp
+  - optimization
