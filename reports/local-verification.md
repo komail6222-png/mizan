@@ -96,6 +96,18 @@ A separate data directory (`--data /tmp/pdf-store`) was used so the approval did
 | call `approve_document` | refused: "operator-only actions are not exposed to agents" |
 | `audit_status` | audit chain verified |
 
+## Python 3.13
+
+`pyproject.toml` declared `requires-python = ">=3.12,<3.13"`, while the CI matrix requested for the repository covers 3.12 and 3.13. A second environment was created with CPython 3.13.18 (uv), the same pinned packages and the editable install:
+
+| Check | Result on 3.13.18 |
+|---|---|
+| `python -m unittest discover -s tests` | 102/102 passed (19.9 s) |
+| `python scripts/safety_suite.py --quick` | summary identical to the 3.12 run: 0 violations, mutants 2/2 and 4/4 caught, 40/40 plans, 320/320 mutations rejected |
+| `python -m mizan verify reports/demo/demo_results.json --expected-key 9a627609…df436` | 7 results verified, publisher pinned |
+
+On that evidence `requires-python` was widened to `>=3.12,<3.14`. No code changed.
+
 ## Differences from the documented procedure
 
 - `scripts/safety_suite.py` writes to `reports/safety/safety.json` by default. It was run with `--out /tmp/...` so the bundled evidence was not overwritten; the full run's summary was then compared with the bundled file.

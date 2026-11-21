@@ -1,13 +1,51 @@
 [build-system]
-requires = ["setuptools>=70"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mizan-ai-lab"
 version = "3.0.0"
-description = "Evidence-based procurement, calibrated surface inspection and risk-aware energy planning"
-requires-python = ">=3.12,<3.13"
+description = "A trust layer for AI-era decisions: signed, explainable and verifiable procurement review, calibrated inspection and risk-aware energy planning"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Komail Ahmed" }]
+requires-python = ">=3.12,<3.14"
+keywords = [
+    "ai-agents",
+    "mcp",
+    "conformal-prediction",
+    "trustworthy-ai",
+    "verifiable-computing",
+    "arabic-nlp",
+    "optimization",
+    "ed25519",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: Arabic",
+    "Natural Language :: English",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security :: Cryptography",
+]
 dynamic = ["dependencies"]
+
+[project.urls]
+Homepage = "https://github.com/komail6222-png/mizan"
+"Live demo" = "https://komail6222-png.github.io/mizan/"
+Documentation = "https://github.com/komail6222-png/mizan/blob/main/docs/TECHNICAL_GUIDE.md"
+Changelog = "https://github.com/komail6222-png/mizan/blob/main/CHANGELOG.md"
+Issues = "https://github.com/komail6222-png/mizan/issues"
+
+[project.scripts]
+mizan = "mizan.__main__:main"
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}

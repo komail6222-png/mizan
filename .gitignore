@@ -7,5 +7,33 @@ var/
 *.db-shm
 operator.token
 release.key
+*.key
+witness*/
+mizan-witness/
 backups/
 .DS_Store
+
+# Packaging and tooling
+*.egg-info/
+build/
+dist/
+node_modules/
+.playwright/
+*.zip
+
+# Local test and evaluation outputs (see docs/TECHNICAL_GUIDE.md)
+my-evaluation/
+my-browser-checks.json
+my_results.json
+sanad-result.json
+basira-result.json
+rasid-result.json
+review-document-*.json
+reports/rebuilt/
+spaces-rebuilt/
+
+# Generated GitHub Pages site (scripts/build_site.py)
+_site/
+
+# LinkedIn launch material, kept out of the repository
+launch-kit/
