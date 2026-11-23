@@ -62,5 +62,37 @@
     "page_errors": 0,
     "external_requests": 0,
     "charts_with_tooltips": 4
+  },
+  {
+    "viewport": [
+      1280,
+      900
+    ],
+    "views": [
+      "landing-en",
+      "landing-tampered",
+      "landing-ar"
+    ],
+    "page_errors": 0,
+    "external_requests": 0,
+    "receipts_weighed_in_browser": 7,
+    "tampered_copy_rejected": true,
+    "rtl": true
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "views": [
+      "landing-en",
+      "landing-tampered",
+      "landing-ar"
+    ],
+    "page_errors": 0,
+    "external_requests": 0,
+    "receipts_weighed_in_browser": 7,
+    "tampered_copy_rejected": true,
+    "rtl": true
   }
 ]

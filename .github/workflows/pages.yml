@@ -32,13 +32,19 @@ jobs:
           node-version: "22"
 
       - name: Install
-        run: python -m pip install -r requirements.txt
+        run: python -m pip install -r requirements.txt playwright
 
       - name: Exhibit logic under Node WebCrypto
         run: node scripts/check_exhibit_logic.mjs
 
-      - name: Build site (verifies signatures and page provenance first)
+      - name: Build site (verifies signatures, page provenance and report figures first)
         run: python scripts/build_site.py --out _site
+
+      - name: Check the built site in Chromium
+        run: |
+          python -m playwright install --with-deps chromium
+          CHROME=$(python -c "from playwright.sync_api import sync_playwright as s; p = s().start(); print(p.chromium.executable_path); p.stop()")
+          python scripts/check_exhibits.py --chromium "$CHROME" --demo _site/exhibit/index.html --spaces _site --site _site --out "$RUNNER_TEMP/browser.json"
 
       - uses: actions/configure-pages@v6
 

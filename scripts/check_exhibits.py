@@ -15,7 +15,42 @@ def find_browser(explicit=None):
     raise SystemExit("No Chromium-family browser found; pass --chromium PATH")
 
 
-def run(chromium=None, screenshots=None, demo=None, spaces=None):
+def check_landing(browser, site, screenshots=None):
+    """The bilingual introduction: weighs every receipt in the browser, rejects a tampered copy, restores, switches to RTL Arabic."""
+    results = []
+    page_file = Path(site).resolve() / "index.html"
+    for width, height in [(1280, 900), (390, 844)]:
+        page = browser.new_page(viewport={"width": width, "height": height})
+        errors, external = [], []
+        page.on("pageerror", lambda exc: errors.append(str(exc)))
+        page.on("request", lambda req: external.append(req.url) if req.url.startswith(("https:", "http:")) else None)
+        page.goto(page_file.as_uri() + "?lang=en")
+        page.wait_for_function("document.querySelector('#instrument').classList.contains('level')", timeout=15000)
+        assert "match their signatures" in page.inner_text("#scale-status")
+        rows = page.locator("#ledger li.ok").count()
+        page.locator("#tamper").click()
+        page.wait_for_function("document.querySelector('#instrument').classList.contains('tipped')", timeout=10000)
+        assert "Rejected" in page.inner_text("#scale-status") and page.locator("#ledger li.bad").count() == 1
+        page.locator("#tamper").click()
+        page.wait_for_function("document.querySelector('#instrument').classList.contains('level')", timeout=10000)
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "landing overflows"
+        page.locator("#lang").click()
+        assert page.evaluate("document.documentElement.dir") == "rtl" and "تطابق" in page.inner_text("#scale-status")
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "Arabic landing overflows"
+        steps = page.locator("#rail button")
+        steps.nth(1).click()
+        assert steps.nth(1).get_attribute("aria-pressed") == "true"
+        if screenshots:
+            page.screenshot(path=str(Path(screenshots) / f"{width}-landing-ar.png"), full_page=True)
+        assert not errors and not external, (errors, external)
+        results.append({"viewport": [width, height], "views": ["landing-en", "landing-tampered", "landing-ar"],
+                        "page_errors": 0, "external_requests": 0, "receipts_weighed_in_browser": rows,
+                        "tampered_copy_rejected": True, "rtl": True})
+        page.close()
+    return results
+
+
+def run(chromium=None, screenshots=None, demo=None, spaces=None, site=None):
     demo = Path(demo or ROOT / "reports/demo/MIZAN_Demo.html").resolve()
     spaces = Path(spaces or ROOT / "spaces").resolve()
     reports = []
@@ -102,6 +137,8 @@ def run(chromium=None, screenshots=None, demo=None, spaces=None):
                 reports.append({"viewport": [width, height], "views": ["evaluation-report"], "page_errors": 0,
                                 "external_requests": 0, "charts_with_tooltips": len(answered)})
                 page.close()
+        if site:
+            reports.extend(check_landing(browser, site, screenshots))
         browser.close()
     return reports
 
@@ -112,6 +149,7 @@ if __name__ == "__main__":
     parser.add_argument("--screenshots")
     parser.add_argument("--demo", help="Exhibit HTML to test (default: bundled demo)")
     parser.add_argument("--spaces", help="Directory with sanad/basira/rasid Space folders")
+    parser.add_argument("--site", help="Built site directory (scripts/build_site.py) whose index.html introduction is also checked")
     parser.add_argument("--out", default="reports/browser-checks.json")
     args = parser.parse_args()
-    Path(args.out).write_text(json.dumps(run(args.chromium, args.screenshots, args.demo, args.spaces), indent=2) + "\n")
+    Path(args.out).write_text(json.dumps(run(args.chromium, args.screenshots, args.demo, args.spaces, args.site), indent=2) + "\n")

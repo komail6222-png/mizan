@@ -35,5 +35,8 @@ spaces-rebuilt/
 # Generated GitHub Pages site (scripts/build_site.py)
 _site/
 
+# Local editor and preview settings
+.claude/
+
 # LinkedIn launch material, kept out of the repository
 launch-kit/
