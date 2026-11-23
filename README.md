@@ -84,7 +84,7 @@ Release notes with the full evidence: [`docs/RELEASE_3.0.md`](docs/RELEASE_3.0.m
 
 ## How this was built
 
-MIZAN was built with AI coding agents. My role was direction, review and verification: setting the requirements and acceptance gates, reviewing the results, and checking every published claim against the evidence in `reports/`.
+MIZAN was built with AI coding agents. My role was direction, review and verification: guiding the work, reviewing the results, and checking every published claim against the evidence in `reports/`.
 
 ## Documentation
 
