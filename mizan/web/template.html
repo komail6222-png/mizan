@@ -4,7 +4,7 @@
 <title>MIZAN exhibit</title><style>
 @font-face{font-family:"Readex";src:url(data:font/woff2;base64,%%FONT_WOFF2%%) format("woff2");font-weight:160 700;font-display:swap}
 :root{--paper:#e6eaee;--sheet:#f5f7f8;--ink:#0e1c36;--ink2:#2a3954;--graphite:#56637c;--rule:#c8d0d9;--rule2:#dbe1e7;
- --brass:#9c6b1f;--brass-lite:#e4c68b;--verdigris:#2a7766;--verdigris-wash:#dcece7;--breach:#b0351f;--breach-wash:#f6dfd9;
+ --brass:#8a5f1c;--brass-lite:#e4c68b;--verdigris:#256b5b;--verdigris-wash:#dcece7;--breach:#b0351f;--breach-wash:#f6dfd9;
  --caution:#875a07;--caution-wash:#f4e6c9;--focus:#c48a2c}
 *{box-sizing:border-box}
 html{background:var(--paper)}
@@ -122,7 +122,7 @@ p{margin:8px 0}
 .strip+.strip-axis{margin-top:24px}
 .strip .q{position:absolute;bottom:0;width:4px;height:52px;margin-left:-2px;background:var(--breach);border-radius:3px 3px 0 0}
 .strip .q.calm{background:var(--verdigris)}
-.strip .q span{position:absolute;bottom:56px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:560;white-space:nowrap}
+.strip .q span{position:absolute;bottom:56px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:560;white-space:nowrap;background:var(--sheet);color:var(--ink);padding:0 4px;border-radius:4px}
 .strip-axis{display:flex;justify-content:space-between;font-size:12px;color:var(--graphite)}
 .metric{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--rule2);font-size:14.5px}
 .metric span{color:var(--graphite)}
@@ -281,7 +281,7 @@ function frame(c,w,h,lo,hi,unit){const L=40,Rr=w-12,T=26,B=h-26,py=v=>B-(v-lo)*(
  c.font='11px Readex, system-ui';c.lineWidth=1;c.strokeStyle='#dbe1e7';c.fillStyle='#56637c';
  for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,y=py(v);c.beginPath();c.moveTo(L,y);c.lineTo(Rr,y);c.stroke();c.fillText(v.toFixed(0),4,y+4)}
  for(let i=0;i<24;i+=4)c.fillText(String(i).padStart(2,'0')+':00',px(i)-13,h-7);c.fillText(unit,4,11);return{px,py,L,Rr,T,B}}
-function cursor(c,g,at){if(at<0)return;c.strokeStyle='#9c6b1f';c.lineWidth=1.5;c.beginPath();c.moveTo(g.px(at),g.T);c.lineTo(g.px(at),g.B);c.stroke()}
+function cursor(c,g,at){if(at<0)return;c.strokeStyle='#8a5f1c';c.lineWidth=1.5;c.beginPath();c.moveTo(g.px(at),g.T);c.lineTo(g.px(at),g.B);c.stroke()}
 function line(c,g,vals,color,width=2.4){c.strokeStyle=color;c.lineWidth=width;c.beginPath();vals.forEach((v,i)=>i?c.lineTo(g.px(i),g.py(v)):c.moveTo(g.px(i),g.py(v)));c.stroke()}
 function band(c,g,lo,hi,color){if(typeof c.fill!=='function')return;c.fillStyle=color;c.beginPath();lo.forEach((v,i)=>i?c.lineTo(g.px(i),g.py(v)):c.moveTo(g.px(i),g.py(v)));for(let i=hi.length-1;i>=0;i--)c.lineTo(g.px(i),g.py(hi[i]));if(typeof c.closePath==='function')c.closePath();c.fill()}
 function rasid(root){const d=risk?R.neutral:R.energy,c=d.certificate,p=d.plan,f=d.forecast,A=d.problem.assets;
@@ -293,12 +293,12 @@ function rasid(root){const d=risk?R.neutral:R.energy,c=d.certificate,p=d.plan,f=
  const load=f.point.map(x=>x[0]),pv=f.point.map(x=>x[1]),qlo=i=>f.quantiles.map(q=>q[i][0]),qhi=i=>f.quantiles.map(q=>q[i][4]);
  const top=Math.max(...qhi(0),...qhi(1))*1.08;
  const cv1=chart(fc,'Load and solar forecast for 24 hours with 90% ranges',(ctx,w,h,at)=>{const g=frame(ctx,w,h,0,top,'kW');band(ctx,g,qlo(0),qhi(0),'rgba(14,28,54,.12)');band(ctx,g,qlo(1),qhi(1),'rgba(192,138,46,.18)');line(ctx,g,load,'#0e1c36');line(ctx,g,pv,'#c08a2e');cursor(ctx,g,at)});
- const lg2=put(sc,'p','legend');[['#2a7766','Stored energy (kWh)'],['#2a7766','Charging'],['#b0351f','Discharging']].forEach(([col,t],j)=>{const s=put(lg2,'span','',t);const i=el('i');i.style.background=col;if(j===1)i.style.height='8px';if(j===2){i.style.height='8px'}s.prepend?s.prepend(i):s.append(i)});
+ const lg2=put(sc,'p','legend');[['#256b5b','Stored energy (kWh)'],['#256b5b','Charging'],['#b0351f','Discharging']].forEach(([col,t],j)=>{const s=put(lg2,'span','',t);const i=el('i');i.style.background=col;if(j===1)i.style.height='8px';if(j===2){i.style.height='8px'}s.prepend?s.prepend(i):s.append(i)});
  const soc=p.soc.slice(0,24),cap=A.capacity,pw=A.power;
  const cv2=chart(sc,'Battery state of charge and hourly charging and discharging',(ctx,w,h,at)=>{const g=frame(ctx,w,h,0,cap,'kWh');const mid=g.B,scale=(g.B-g.T)*0.32/pw;
-  ctx.lineWidth=Math.max(3,(g.Rr-g.L)/24*0.5);p.charge.forEach((v,i)=>{if(Math.abs(v)<1e-9)return;ctx.strokeStyle='rgba(42,119,102,.55)';ctx.beginPath();ctx.moveTo(g.px(i),mid);ctx.lineTo(g.px(i),mid-Math.abs(v)*scale);ctx.stroke()});
+  ctx.lineWidth=Math.max(3,(g.Rr-g.L)/24*0.5);p.charge.forEach((v,i)=>{if(Math.abs(v)<1e-9)return;ctx.strokeStyle='rgba(37,107,91,.55)';ctx.beginPath();ctx.moveTo(g.px(i),mid);ctx.lineTo(g.px(i),mid-Math.abs(v)*scale);ctx.stroke()});
   p.discharge.forEach((v,i)=>{if(Math.abs(v)<1e-9)return;ctx.strokeStyle='rgba(176,53,31,.55)';ctx.beginPath();ctx.moveTo(g.px(i),mid);ctx.lineTo(g.px(i),mid-Math.abs(v)*scale);ctx.stroke()});
-  line(ctx,g,soc,'#2a7766',2.6);cursor(ctx,g,at)});
+  line(ctx,g,soc,'#256b5b',2.6);cursor(ctx,g,at)});
  const hour=put(root,'div','sheet span'),hh=put(hour,'div','hour');
  const show=i=>{hh.replaceChildren();const t=f.timestamps[i].slice(11,16),ch=Math.abs(p.charge[i]),dc=Math.abs(p.discharge[i]);
   [['Hour (UTC)',t],['Load forecast',fmt(load[i],1)+' kW, range '+fmt(qlo(0)[i],0)+'–'+fmt(qhi(0)[i],0)],['Battery',ch>1e-9?'charging '+fmt(ch,1)+' kW':dc>1e-9?'discharging '+fmt(dc,1)+' kW':'idle'],['Stored energy',fmt(p.soc[i],1)+' kWh of '+cap]].forEach(([a,b])=>{const n=put(hh,'div');put(n,'small','',a);put(n,'strong','',b)})};

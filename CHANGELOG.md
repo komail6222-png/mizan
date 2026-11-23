@@ -9,6 +9,7 @@ All notable changes to MIZAN. Detailed notes and evidence for each release are i
 
 ### Added
 - **Bilingual introduction at the site root** (`site/landing.html`). A balance weighs the seven signed results while the browser recomputes each signature, and tips when one digit is changed. English and Arabic with right-to-left layout. Every figure on it is read from `reports/` by `scripts/build_site.py`, which also refuses to build if the wording about resolved and unresolved results no longer matches the reported intervals. The exhibit moved to `/exhibit/`.
+- The evaluation report (`scripts/build_report.py`) uses the same identity, with a Latin-only typeface subset so the page stays under its 60,000-character budget; its figures are unchanged. Text colours meet WCAG AA contrast on every page, checked against the rendered pages.
 - `scripts/check_exhibits.py --site` checks the introduction in Chromium (verification, tamper and restore, Arabic RTL, no overflow, zero external requests); the Pages workflow runs it before every deploy.
 
 ## [3.0.0] - 2026-11-21

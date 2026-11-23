@@ -8,11 +8,11 @@
 <meta property="og:image" content="https://komail6222-png.github.io/mizan/og.png">
 <meta property="og:url" content="https://komail6222-png.github.io/mizan/">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 40'%3E%3Cg fill='none' stroke='%239c6b1f' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M24 9v25M15 36h18M5 11h38M5 11l-4 10h8zM43 11l-4 10h8z'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 40'%3E%3Cg fill='none' stroke='%238a5f1c' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M24 9v25M15 36h18M5 11h38M5 11l-4 10h8zM43 11l-4 10h8z'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 @font-face{font-family:"Readex";src:url(data:font/woff2;base64,%%FONT_WOFF2%%) format("woff2");font-weight:160 700;font-display:swap}
 :root{--paper:#e6eaee;--sheet:#f5f7f8;--ink:#0e1c36;--ink2:#2a3954;--graphite:#56637c;--rule:#c8d0d9;--rule2:#dbe1e7;
- --brass:#9c6b1f;--brass-lite:#e4c68b;--verdigris:#2a7766;--verdigris-wash:#dcece7;--breach:#b0351f;--breach-wash:#f6dfd9;
+ --brass:#8a5f1c;--brass-lite:#e4c68b;--verdigris:#256b5b;--verdigris-wash:#dcece7;--breach:#b0351f;--breach-wash:#f6dfd9;
  --caution:#875a07;--caution-wash:#f4e6c9;--focus:#c48a2c;--spring:cubic-bezier(.25,1.45,.45,1)}
 *{box-sizing:border-box}
 html{background:var(--paper);scroll-behavior:smooth}
@@ -381,7 +381,7 @@ function pickLang(){const q=new URLSearchParams(location.search).get('lang');if(
  return (navigator.language||'').toLowerCase().startsWith('ar')?'ar':'en'}
 const t=k=>T[lang][k];
 function setLang(l){lang=l;H.lang=l;H.dataset.lang=l;H.dir=l==='ar'?'rtl':'ltr';document.title=l==='ar'?'ميزان | قرارات يمكنك التحقق منها':'MIZAN | Decisions you can check';
- $('#lang').setAttribute('aria-label',t('langSwitch'));try{localStorage.setItem('mizan-lang',l)}catch(e){}paintScaleText();paintRail();paintSnippets()}
+ try{localStorage.setItem('mizan-lang',l)}catch(e){}paintScaleText();paintRail();paintSnippets()}
 
 /* The scale: signed receipts on one pan, the browser's recomputation on the other */
 const receipts=packet.run.receipts.map(r=>r.fixture),N=receipts.length,svgNS='http://www.w3.org/2000/svg';

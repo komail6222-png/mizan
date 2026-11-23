@@ -4,6 +4,7 @@ The page embeds only the numbers it plots (no fixtures or images), makes no netw
 Rebuild after `python scripts/evaluate.py`: python scripts/build_report.py
 """
 import argparse
+import base64
 import json
 from pathlib import Path
 
@@ -61,22 +62,26 @@ PAGE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MIZAN | Evaluation report</title>
 <style>
-.viz-root{color-scheme:light;--surface-1:#fcfcfb;--page:#f9f9f7;--text-primary:#0b0b0b;--text-secondary:#52514e;--muted:#898781;
-  --grid:#e1e0d9;--axis:#c3c2b7;--border:rgba(11,11,11,.10);--series-1:#2a78d6;--series-2:#eb6834;--good:#006300}
-@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .viz-root{color-scheme:dark;--surface-1:#1a1a19;--page:#0d0d0d;
-  --text-primary:#f0efec;--text-secondary:#c3c2b7;--grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);--series-1:#3987e5;--series-2:#d95926;--good:#0ca30c}}
-:root[data-theme="dark"] .viz-root{color-scheme:dark;--surface-1:#1a1a19;--page:#0d0d0d;--text-primary:#f0efec;--text-secondary:#c3c2b7;
-  --grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);--series-1:#3987e5;--series-2:#d95926;--good:#0ca30c}
+@font-face{font-family:"Readex";src:url(data:font/woff2;base64,%%FONT_WOFF2%%) format("woff2");font-weight:160 700;font-display:swap}
+.viz-root{color-scheme:light;--surface-1:#f5f7f8;--page:#e6eaee;--text-primary:#0e1c36;--text-secondary:#4b586f;--muted:#6b7790;
+  --grid:#dbe1e7;--axis:#c8d0d9;--border:rgba(14,28,54,.13);--series-1:#0e1c36;--series-2:#9c6b1f;--good:#256b5b;--accent:#855a17}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .viz-root{color-scheme:dark;--surface-1:#121e33;--page:#0b1424;
+  --text-primary:#eef2f7;--text-secondary:#aab5c6;--grid:#1f2c42;--axis:#31415c;--border:rgba(255,255,255,.10);--series-1:#9fb8e8;--series-2:#ddb56b;--good:#6fc2ad;--accent:#ddb56b}}
+:root[data-theme="dark"] .viz-root{color-scheme:dark;--surface-1:#121e33;--page:#0b1424;--text-primary:#eef2f7;--text-secondary:#aab5c6;
+  --grid:#1f2c42;--axis:#31415c;--border:rgba(255,255,255,.10);--series-1:#9fb8e8;--series-2:#ddb56b;--good:#6fc2ad;--accent:#ddb56b}
 *{box-sizing:border-box}
 body{margin:0}
-.viz-root{background:var(--page);color:var(--text-primary);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
-main{max-width:980px;margin:0 auto;padding:28px 20px 60px}
-h1{font-size:28px;line-height:1.2;margin:4px 0 6px}h2{font-size:20px;margin:40px 0 4px}h3{font-size:16px;margin:0 0 2px}
-.kicker{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-secondary);font-weight:600}
+.viz-root{background:var(--page);color:var(--text-primary);font:350 15.5px/1.55 "Readex",system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
+.bar{border-bottom:1px solid var(--axis)}.bar div{max-width:980px;margin:0 auto;padding:0 20px;min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{font-weight:640;letter-spacing:.06em;font-size:19px;text-decoration:none;color:inherit}
+.bar a.back{font-size:14px;font-weight:500;color:inherit;text-decoration:none;border-bottom:1px solid var(--axis)}
+main{max-width:980px;margin:0 auto;padding:34px 20px 60px}
+h1{font-size:clamp(30px,4.6vw,46px);line-height:1.05;letter-spacing:-.025em;font-weight:600;margin:6px 0 10px}h2{font-size:22px;font-weight:600;letter-spacing:-.01em;margin:48px 0 4px}h3{font-size:16px;font-weight:600;margin:0 0 2px}
+.kicker{font-size:14.5px;color:var(--accent);font-weight:550}
 .lede{color:var(--text-secondary);margin:0 0 18px;max-width:72ch}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:20px 0}
-.tile,.card{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:16px}
-.tile .label{font-size:13px;color:var(--text-secondary)}.tile .value{font-size:28px;font-weight:600;margin:2px 0}
+.tile,.card{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:18px}
+.tile .label{font-size:13px;color:var(--text-secondary)}.tile .value{font-size:30px;font-weight:560;letter-spacing:-.02em;margin:2px 0;font-variant-numeric:tabular-nums}
 .tile .note{font-size:13px;color:var(--text-secondary)}
 .card{margin:14px 0}.card p.sub{margin:0 0 10px;color:var(--text-secondary);font-size:14px}
 .chart{position:relative;width:100%}
@@ -90,30 +95,31 @@ th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--grid)}td.n,t
   font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.12);opacity:0;transition:opacity .08s;max-width:260px;z-index:2}
 .tip strong{display:block;font-size:15px}.tip span{color:var(--text-secondary)}
 .foot{color:var(--text-secondary);font-size:13px;margin-top:36px}
-svg text{fill:var(--text-secondary);font:12px system-ui,-apple-system,"Segoe UI",sans-serif}
+svg text{fill:var(--text-secondary);font:12px "Readex",system-ui,-apple-system,"Segoe UI",sans-serif}
+code{font-size:.9em}a:focus-visible,[tabindex]:focus-visible{outline:3px solid #c48a2c;outline-offset:2px}
 svg .strong{fill:var(--text-primary);font-weight:600}
 .hit{fill:transparent;cursor:default;outline:none}.mark.on{filter:brightness(1.15)}svg text{pointer-events:none}
 </style>
 </head>
 <body>
-<div class="viz-root"><main>
-<div class="kicker">MIZAN · release 3.0 · generated fixtures</div>
+<div class="viz-root"><header class="bar"><div><a class="brand" href="https://komail6222-png.github.io/mizan/">MIZAN</a><a class="back" href="https://komail6222-png.github.io/mizan/">What is MIZAN?</a></div></header><main>
+<div class="kicker">Release 3.0, evaluated on generated fixtures</div>
 <h1>Evaluation report</h1>
 <p class="lede">What the three systems decide on held-out generated data, what the statistics promise, and where the evidence is still thin. Every number on this page comes from <code>reports/evaluation/*.json</code>.</p>
 <div class="tiles" id="tiles"></div>
 
-<h2>SANAD · procurement evidence</h2>
+<h2>SANAD: procurement evidence</h2>
 <p class="lede">Each set is a regression suite for one grammar version. A false MEETS means the system approved a requirement it should not have. The baselines never abstain.</p>
 <div class="card"><div class="scroll"><table id="sanad"></table></div></div>
 
-<h2>BASIRA · what one calibration bank guarantees</h2>
+<h2>BASIRA: what one calibration bank guarantees</h2>
 <p class="lede" id="basira-lede"></p>
 <div class="card"><h3>Banks whose long-run false-alert rate exceeds 5%</h3>
 <p class="sub" id="basira-sub"></p><div class="legend"><span style="--c:var(--series-1)">Split conformal (shipped rule)</span><span style="--c:var(--series-2)">PAC rule, δ = 10%</span><span class="line">10% bound (δ)</span></div>
 <div class="chart" id="banks"></div>
 <details><summary>Show data</summary><div class="scroll"><table id="banks-table"></table></div></details></div>
 
-<h2>RASID · decision quality, not only forecast error</h2>
+<h2>RASID: decision quality, not only forecast error</h2>
 <p class="lede" id="rasid-lede"></p>
 <div class="card"><h3>Share of the achievable battery value each policy captured</h3>
 <p class="sub">0% is running without a battery, 100% is the hindsight reference that plans each day on the realized load.</p>
@@ -126,7 +132,7 @@ svg .strong{fill:var(--text-primary);font-weight:600}
 <div class="chart" id="paired"></div>
 <details><summary>Show data</summary><div class="scroll"><table id="rasid-table"></table></div></details></div>
 <section id="safety-section" hidden>
-<h2>Safety evidence · properties, simulation and mutants</h2>
+<h2>Safety evidence: properties, simulation and mutants</h2>
 <p class="lede">Generated inputs and seeded schedules check relations that must hold for every case. Each suite is also run against deliberately broken versions of the system; a suite that cannot catch those proves nothing. Source: <code>reports/safety/safety.json</code>.</p>
 <div class="card"><div class="scroll"><table id="safety"></table></div></div>
 </section>
@@ -244,10 +250,14 @@ render();let t;addEventListener("resize",()=>{clearTimeout(t);t=setTimeout(()=>{
 """
 
 
+FONT = ROOT / "mizan/web/fonts/ReadexPro-latin.woff2"  # Latin-only subset; the report has no Arabic text
+
+
 def build(source, out):
     data = json.dumps(summarize(source), ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     data = data.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
-    Path(out).write_text(PAGE.replace("%%DATA%%", data), encoding="utf-8")
+    page = PAGE.replace("%%FONT_WOFF2%%", base64.b64encode(FONT.read_bytes()).decode())
+    Path(out).write_text(page.replace("%%DATA%%", data), encoding="utf-8")
     return out
 
 
