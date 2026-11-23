@@ -36,6 +36,9 @@ python scripts/build_site.py                                   # GitHub Pages si
 | `mizan/explain.py`, `mizan/receipts.py` | proof-only explanations, offline receipt verification |
 | `mizan/simulation.py`, `mizan/safety.py` | deterministic simulation and metamorphic safety suites |
 | `scripts/` | evaluation, report, exhibit and site builders, browser checks |
+| `mizan/web/template.html` | the exhibit's design and in-page verifier (shared by the exhibit, the Spaces and `mizan serve`) |
+| `mizan/web/fonts/` | Readex Pro subset (OFL), embedded into every page so nothing is fetched |
+| `site/landing.html` | the bilingual introduction at the site root; `scripts/build_site.py` fills it from `reports/` |
 | `reports/` | the evidence: every published number comes from here |
 | `docs/` | release notes, qualification record, technical guide, design history |
 
@@ -44,5 +47,6 @@ python scripts/build_site.py                                   # GitHub Pages si
 - **Signed exhibit data is frozen.** Do not regenerate or re-sign `reports/demo/demo_results.json`, `reports/demo/MIZAN_Demo.html`, `mizan/web/index.html` or `spaces/*/index.html`. Never run `python -m mizan demo` with `--out reports/demo`: it creates a new key and breaks the pinned fingerprint `9a627609…df436`. Rebuild pages only with `scripts/build_exhibit.py` and `scripts/build_spaces.py` from the existing signed data.
 - **No invented numbers.** Every figure in the README, docs or posts must be traceable to a file in `reports/`. All datasets are generated fixtures; never describe them as real.
 - **Agent versus operator.** AI agents (MCP) may submit, explain and verify. Approving documents, assigning authority, changing thresholds, promotion, rollback, upgrade, revocation, backup, restore and anchoring stay with the human operator. Do not add MCP tools for them.
-- **Minimal fixes.** Change code only to fix a reproduced failure, with the smallest change and a test that proves it.
+- **Minimal fixes.** Change engine, store and verification code only to fix a reproduced failure, with the smallest change and a test that proves it.
+- **The presentation layer may change.** Edit `mizan/web/template.html` or `site/landing.html`, then rebuild with `scripts/build_exhibit.py`, `scripts/build_spaces.py` and `scripts/build_site.py`. Keep the contracts in `scripts/check_exhibit_logic.mjs` and `scripts/check_exhibits.py` (button labels, two canvases on RASID, only the 96 px part images on the exhibit, the `#trust` texts), keep the code between `/*VERIFY:BEGIN*/` and `/*VERIFY:END*/` unchanged, and keep zero external requests. The intro page's figures come from `reports/` through `build_site.py`; never type them by hand.
 - **Never commit** `var/`, `.venv/`, `operator.token`, `*.key`, witness directories or `launch-kit/`. Regenerate `SHA256SUMS` after changing tracked files.

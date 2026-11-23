@@ -2,6 +2,15 @@
 
 All notable changes to MIZAN. Detailed notes and evidence for each release are in `docs/`. Every release so far is dated 21 November 2026.
 
+## [Unreleased]
+
+### Changed
+- **Redesigned interface.** A new visual identity for the exhibit, the three Spaces and the local `mizan serve` page: an instrument-like layout, an embedded Readex Pro typeface (Arabic and Latin), and interactions built from data the old page did not show: an image wipe and per-patch readout for BASIRA, the calibration bank drawn against the alert threshold, linked hour-by-hour forecast and battery charts, the verifier's eleven constraint groups and the scenario costs for RASID. The signed data and the in-page verification code are unchanged; the pages were rebuilt from the same packet and still verify against the pinned key.
+
+### Added
+- **Bilingual introduction at the site root** (`site/landing.html`). A balance weighs the seven signed results while the browser recomputes each signature, and tips when one digit is changed. English and Arabic with right-to-left layout. Every figure on it is read from `reports/` by `scripts/build_site.py`, which also refuses to build if the wording about resolved and unresolved results no longer matches the reported intervals. The exhibit moved to `/exhibit/`.
+- `scripts/check_exhibits.py --site` checks the introduction in Chromium (verification, tamper and restore, Arabic RTL, no overflow, zero external requests); the Pages workflow runs it before every deploy.
+
 ## [3.0.0] - 2026-11-21
 
 A trust layer for decisions in the age of AI agents. Details: [`docs/RELEASE_3.0.md`](docs/RELEASE_3.0.md).

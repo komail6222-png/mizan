@@ -7,13 +7,13 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Live demo](https://img.shields.io/badge/live%20demo-GitHub%20Pages-2ea44f)](https://komail6222-png.github.io/mizan/)
 
-**[Live demo](https://komail6222-png.github.io/mizan/)**: the exhibit recomputes every SHA-256 digest and Ed25519 signature in your browser. · [Evaluation report](https://komail6222-png.github.io/mizan/report/) · [العربية](README.ar.md)
+**[Live demo](https://komail6222-png.github.io/mizan/)**: a scale weighs seven signed results in your browser, recomputing every SHA-256 digest and Ed25519 signature; change one digit and it tips. In English and Arabic. · [Explore the exhibit](https://komail6222-png.github.io/mizan/exhibit/) · [Evaluation report](https://komail6222-png.github.io/mizan/report/) · [العربية](README.ar.md)
 
 MIZAN runs three local decision systems under one discipline. **SANAD** reviews bilingual (Arabic/English) procurement documents against tender rules and cites the exact text behind every verdict. **BASIRA** inspects parts with calibrated anomaly detection and states what its calibration actually guarantees. **RASID** plans a battery day under risk and has an independent verifier check every plan. Each result goes through the same broker, isolated worker, verifier and signed publication, whether a human or an AI agent asked for it. All bundled data is generated.
 
-![Try a tampered copy: the exhibit verifies 7 of 7 signed results in the browser, then rejects a copy with one changed digit](docs/screenshots/tampered-copy.gif)
+![The live page weighs seven signed results in the browser until the scale is level, then a copy with one changed digit tips it and is rejected](docs/screenshots/tampered-copy.gif)
 
-<sub>The live exhibit verifies all 7 signed results in the browser. "Try a tampered copy" changes one digit, and the copy is rejected.</sub>
+<sub>The live page recomputes all 7 signatures in the browser; each match adds a weight until the scale is level. "Change one digit" breaks one signature and the scale tips.</sub>
 
 ## How a decision becomes trustworthy
 
