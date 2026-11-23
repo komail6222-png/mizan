@@ -8,7 +8,10 @@ from .service import initialize,Runner,drain
 
 def exhibit_html(packet,product=None):
     """The self-verifying exhibit page for a signed packet. The browser re-checks every receipt it displays."""
-    template=(Path(__file__).parent/"web"/"template.html").read_text(encoding="utf-8")
+    web=Path(__file__).parent/"web"
+    template=(web/"template.html").read_text(encoding="utf-8")
+    # The typeface is embedded so the page stays self-contained and makes no network request.
+    template=template.replace("%%FONT_WOFF2%%",base64.b64encode((web/"fonts"/"ReadexPro-subset.woff2").read_bytes()).decode())
     encoded=json.dumps(packet,ensure_ascii=False,allow_nan=False,separators=(",",":"))
     encoded=encoded.replace("&","\\u0026").replace("<","\\u003c").replace(">","\\u003e")
     page=template.replace("%%DEMO_DATA%%",encoded)

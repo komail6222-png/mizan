@@ -54,4 +54,4 @@ dependencies = {file = ["requirements.txt"]}
 include = ["mizan*"]
 
 [tool.setuptools.package-data]
-mizan = ["web/*.html"]
+mizan = ["web/*.html", "web/fonts/*"]
