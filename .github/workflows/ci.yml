@@ -31,7 +31,7 @@ jobs:
       # The runner's own CPython links SQLite 3.46.1, which the broker refuses (SQLITE_PATCH: the WAL-reset
       # fix needs 3.51.3+, 3.50.7+ or 3.44.6+; pysqlite3-binary 0.5.4.post2 bundles 3.51.1). uv-managed CPython
       # bundles a fixed SQLite (3.53.1 in the local verification run), so CI uses it instead.
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.4.0  # this action publishes full version tags only
         with:
           enable-cache: true
           cache-dependency-glob: requirements.txt
