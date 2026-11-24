@@ -54,3 +54,46 @@ class ReportPageTests(unittest.TestCase):
         self.assertNotIn("<", embedded)
         self.assertEqual(json.loads(embedded)["basira"]["minimum_m"], 45)
         self.assertLess(len(page), 60000, "the page carries summaries, not fixtures")
+
+    def test_report_summarizes_the_hugging_face_evaluation(self):
+        import json, re, tempfile
+        from pathlib import Path
+        from scripts.build_report import build, summarize
+        root = Path(__file__).resolve().parents[1]
+        source = {k: json.loads((root / f"reports/hf/{k}.json").read_bytes()) for k in ("basira", "rasid", "sanad")}
+        with tempfile.TemporaryDirectory() as d:
+            page = Path(build(root / "reports/evaluation", Path(d) / "index.html")).read_text(encoding="utf-8")
+            self.assertNotIn("hf", summarize(root / "reports/evaluation", hf_source=Path(d) / "missing"))
+        self.assertIn("Foundation models from Hugging Face", page)
+        self.assertIsNone(re.search("[֐-ࣿיִ-﷿ﹰ-﻿]", page), "the report page is Latin-only")
+        self.assertLess(len(page), 60000, "the page carries summaries, not fixtures")
+        hf = json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', page, re.S).group(1))["hf"]
+        # The figures are the files' own values.
+        b, r, s = source["basira"], source["rasid"], source["sanad"]
+        self.assertEqual(hf["basira"]["model"]["frozen_test"]["detected"], b["model"]["frozen_test"]["detected"])
+        self.assertEqual(hf["basira"]["baseline"]["frozen_test"]["false_alerts"], b["baseline"]["frozen_test"]["false_alerts"])
+        self.assertEqual(hf["basira"]["model"]["shipped"]["long_run_false_alert_estimate"],
+                         b["model"]["calibration_study"]["shipped_calibration"]["long_run_false_alert_estimate"])
+        self.assertEqual([[p[k] for k in ("policy", "reference", "mean_daily_difference_95ci")] for p in hf["rasid"]["paired"]],
+                         [[p[k] for k in ("policy", "reference", "mean_daily_difference_95ci")] for p in r["model"]["paired_comparisons"]])
+        # Pinball and CRPS are compared on the shared levels only, never with the shipped file's values.
+        self.assertEqual(hf["rasid"]["levels"], r["baseline"]["forecast"]["shared_levels"])
+        self.assertEqual(hf["rasid"]["forecast"]["pinball"], [r["baseline"]["forecast"]["ridge_mean_pinball"], r["model"]["forecast"]["chronos_mean_pinball"]])
+        self.assertEqual(hf["rasid"]["forecast"]["crps"], [r["baseline"]["forecast"]["ridge_truncated_crps"], r["model"]["forecast"]["chronos_truncated_crps"]])
+        for kind in ("bilingual", "en", "ar"):
+            self.assertEqual(hf["sanad"]["e5"][kind], s["model"]["metrics"][kind]["all"])
+            self.assertEqual(hf["sanad"]["lexical"][kind], s["baseline"]["metrics"][kind]["all"])
+        self.assertEqual(hf["sanad"]["notes"], s["notes"])
+        self.assertEqual([hf[k]["repo"] for k in ("basira", "rasid", "sanad")], [source[k]["identity"]["repo"] for k in ("basira", "rasid", "sanad")])
+        # A summary: no per-item, per-day or gate records, and a small fraction of the three evidence files.
+        keys = set()
+
+        def walk(value):
+            if isinstance(value, dict):
+                keys.update(value)
+                value = list(value.values())
+            for item in value if isinstance(value, list) else ():
+                walk(item)
+        walk(hf)
+        self.assertTrue(keys.isdisjoint({"rows", "origins", "checked", "bank_digest", "set_digest", "manifest_sha256"}), keys)
+        self.assertLess(len(json.dumps(hf)), 6000)

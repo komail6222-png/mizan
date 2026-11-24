@@ -31,7 +31,50 @@ def safety_summary(path):
     ]
 
 
-def summarize(folder):
+HF_POLICY = {"candidate": "ridge risk-weighted", "candidate_risk_neutral": "ridge risk-neutral", "seasonal_naive": "seasonal baseline",
+             "chronos": "Chronos risk-weighted", "chronos_risk_neutral": "Chronos risk-neutral"}
+
+
+def hf_summary(folder):
+    """The figures the Hugging Face section shows, read from reports/hf/: never the per-item, per-day or gate records."""
+    load = lambda k: json.loads((Path(folder) / f"{k}.json").read_bytes())
+    sanad, basira, rasid = load("sanad"), load("basira"), load("rasid")
+    run = lambda r: {"repo": r["identity"]["repo"], "revision": r["identity"]["revision"][:12], "gate": r["gate"]["passed"],
+                     "identical": r["repeat_run"]["identical"]}
+
+    def vision(side):  # the split-conformal study rows, shortened: false_alert is the mean rate, share_above the share of banks above alpha
+        study, test = side["calibration_study"], side["frozen_test"]
+        intact = sum(item["condition"] == "intact" for item in test["rows"])
+        return {"frozen_test": {"detected": test["detected"], "false_alerts": test["false_alerts"], "intact": intact, "defects": test["test_items"] - intact},
+                "shipped": {k: study["shipped_calibration"][k] for k in ("m", "long_run_false_alert_estimate", "probability_of_a_bank_at_least_this_bad")},
+                "study": [{"m": row["m"], "false_alert": row["marginal_mean_false_alert"], "share_above": row["marginal_share_of_banks_above_alpha"]}
+                          for row in study["rows"]],
+                "detection": min(row["marginal_mean_detection"] for row in study["rows"])}
+
+    fb, fm = rasid["baseline"]["forecast"], rasid["model"]["forecast"]
+    qb, qm = rasid["baseline"]["decision_quality"], rasid["model"]["decision_quality"]
+    pairs = rasid["model"]["paired_comparisons"]
+    ranks = lambda side: {kind: side["metrics"][kind]["all"] for kind in ("bilingual", "en", "ar")}
+    return {
+        "fixture_only": all(r["fixture_only"] for r in (sanad, basira, rasid)),
+        "basira": {**run(basira), "alpha": basira["settings"]["alpha"], "draws": basira["settings"]["draws"],
+                   "baseline": vision(basira["baseline"]), "model": vision(basira["model"])},
+        "rasid": {**run(rasid), "days": rasid["model"]["target_days"], "levels": fm["shared_levels"], "pv_clipped": fm["pv_values_clipped"],
+                  "forecast": {"mae": [fb["ridge_mae_kw"], fm["chronos_mae_kw"]], "pinball": [fb["ridge_mean_pinball"], fm["chronos_mean_pinball"]],
+                               "crps": [fb["ridge_truncated_crps"], fm["chronos_truncated_crps"]],
+                               "coverage": [fb["ridge_coverage_80_load"], fm["chronos_coverage_80_load"]]},
+                  "cost": {"neutral": [qb["candidate_risk_neutral"]["total_cost"], qm["chronos_risk_neutral"]["total_cost"]],
+                           "weighted": [qb["candidate"]["total_cost"], qm["chronos"]["total_cost"]]},
+                  "verified": min(q["verified_feasible_plans"] for q in [*qb.values(), *qm.values()]), "bootstrap": pairs[0]["bootstrap"],
+                  "paired": [{"label": f"{HF_POLICY[c['policy']]} − {HF_POLICY[c['reference']]}",
+                              **{k: c[k] for k in ("policy", "reference", "mean_daily_difference", "mean_daily_difference_95ci", "days_cheaper", "days_more_expensive")}}
+                             for c in pairs]},
+        "sanad": {**run(sanad), "queries": sanad["model"]["queries"], "unit": sanad["model"]["queries_unit"], "documents": sanad["model"]["documents"],
+                  "lexical": ranks(sanad["baseline"]), "e5": ranks(sanad["model"]), "notes": sanad["notes"]},
+    }
+
+
+def summarize(folder, hf_source=ROOT / "reports/hf"):
     load = lambda k: json.loads((Path(folder) / f"{k}.json").read_bytes())
     sanad, basira, rasid = load("sanad"), load("basira"), load("rasid")
     sets = [("Original bilingual grammar set", sanad, "naive_numeric_correct", "Numeric-only rule"),
@@ -39,7 +82,7 @@ def summarize(folder):
             ("Grammar 3: multi-model tables", sanad["grammar_3_tables"], "naive_row_reader_correct", "First number on the row")]
     study = basira["calibration_study"]
     q = rasid["decision_quality"]
-    return {
+    summary = {
         "environment": sanad.get("environment", {}),
         "safety": safety_summary(Path(folder).parent / "safety" / "safety.json"),
         "sanad": [{"set": name, "cases": s["fixture_rows"], "correct": s["correct"], "false_meets": s["false_meets"],
@@ -53,6 +96,9 @@ def summarize(folder):
                   "paired": [{"label": f"{SHORT[c['policy']]} − {SHORT[c['reference']].lower()}", "full": f"{LABELS[c['policy']]} minus {LABELS[c['reference']].lower()}", **c}
                              for c in rasid["paired_comparisons"]]},
     }
+    if Path(hf_source).is_dir():
+        summary["hf"] = hf_summary(hf_source)
+    return summary
 
 
 PAGE = r"""<!DOCTYPE html>
@@ -99,13 +145,14 @@ svg text{fill:var(--text-secondary);font:12px "Readex",system-ui,-apple-system,"
 code{font-size:.9em}a:focus-visible,[tabindex]:focus-visible{outline:3px solid #c48a2c;outline-offset:2px}
 svg .strong{fill:var(--text-primary);font-weight:600}
 .hit{fill:transparent;cursor:default;outline:none}.mark.on{filter:brightness(1.15)}svg text{pointer-events:none}
+.card p.note{margin:10px 0 0;color:var(--text-secondary);font-size:13.5px}.card h3.gap{margin-top:24px}table.fit{min-width:0}#hf-section td.n{white-space:nowrap}
 </style>
 </head>
 <body>
 <div class="viz-root"><header class="bar"><div><a class="brand" href="https://komail6222-png.github.io/mizan/">MIZAN</a><a class="back" href="https://komail6222-png.github.io/mizan/">What is MIZAN?</a></div></header><main>
 <div class="kicker">Release 3.0, evaluated on generated fixtures</div>
 <h1>Evaluation report</h1>
-<p class="lede">What the three systems decide on held-out generated data, what the statistics promise, and where the evidence is still thin. Every number on this page comes from <code>reports/evaluation/*.json</code>.</p>
+<p class="lede">What the three systems decide on held-out generated data, what the statistics promise, and where the evidence is still thin. Every number on this page comes from the JSON files under <code>reports/</code>.</p>
 <div class="tiles" id="tiles"></div>
 
 <h2>SANAD: procurement evidence</h2>
@@ -135,6 +182,18 @@ svg .strong{fill:var(--text-primary);font-weight:600}
 <h2>Safety evidence: properties, simulation and mutants</h2>
 <p class="lede">Generated inputs and seeded schedules check relations that must hold for every case. Each suite is also run against deliberately broken versions of the system; a suite that cannot catch those proves nothing. Source: <code>reports/safety/safety.json</code>.</p>
 <div class="card"><div class="scroll"><table id="safety"></table></div></div>
+</section>
+<section id="hf-section" hidden>
+<h2>Foundation models from Hugging Face</h2>
+<p class="lede" id="hf-lede"></p>
+<div class="card"><h3>BASIRA: inspection descriptor</h3><p class="sub" id="hf-basira-sub"></p>
+<div class="scroll"><table class="fit" id="hf-basira"></table></div><p class="note" id="hf-basira-note"></p></div>
+<div class="card"><h3>RASID: load and solar forecaster</h3><p class="sub" id="hf-rasid-sub"></p>
+<div class="scroll"><table class="fit" id="hf-rasid"></table></div><p class="note" id="hf-rasid-note"></p>
+<h3 class="gap">Paired differences in mean daily cost</h3><p class="sub" id="hf-paired-sub"></p>
+<div class="scroll"><table id="hf-paired"></table></div><p class="note" id="hf-paired-note"></p></div>
+<div class="card"><h3>SANAD: evidence retriever</h3><p class="sub" id="hf-sanad-sub"></p>
+<div class="scroll"><table id="hf-sanad"></table></div><p class="note" id="hf-sanad-note"></p></div>
 </section>
 <p class="foot" id="foot"></p>
 </main></div>
@@ -242,7 +301,41 @@ function ledes(){const R=D.rasid;document.getElementById("rasid-lede").textConte
   const e=D.environment;document.getElementById("foot").textContent=`Generated from reports/evaluation · Python ${e.python||"?"} · NumPy ${e.numpy||"?"} · SciPy ${e.scipy||"?"} · All inputs are generated fixtures; costs are illustrative units. Rebuild with python scripts/build_report.py.`}
 function safety(){if(!D.safety)return;document.getElementById("safety-section").hidden=false;
   table("safety",["Suite","What ran","Violations","Broken versions"],D.safety.map(r=>[r.suite,r.checks,String(r.violations),r.mutants]),[0,0,1,0])}
-function render(){tiles();sanad();banks();share();tail();paired();ledes();safety()}
+function models(){const F=D.hf;if(!F)return;document.getElementById("hf-section").hidden=false;
+  const put=(id,s)=>{document.getElementById(id).textContent=s},name=r=>r.repo.split("/")[1],sgn=v=>(v>0?"+":"")+fmt(v,3),
+    list=xs=>xs.length<3?xs.join(" and "):xs.slice(0,-1).join(", ")+" and "+xs[xs.length-1],ident=r=>`${r.repo} (revision ${r.revision})`,
+    off=[F.basira,F.rasid,F.sanad].filter(r=>!(r.gate&&r.identical)).map(r=>r.repo);
+  put("hf-lede",`Three pinned checkpoints, each used frozen in place of one component and scored on the same items, seeds, origins and metrics as that component. ${F.fixture_only?"All inputs are generated fixtures. ":""}${off.length?`The fidelity gate or repeat run failed for ${list(off)}.`:"Every run passed its fidelity gate, which re-checks the current component in the new harness, and repeated identically."} Source: reports/hf/*.json.`);
+  const B=F.basira,b=[B.baseline,B.model],s0=B.baseline.shipped,t=B.baseline.frozen_test,a=pct(frac(B.alpha),0);
+  put("hf-basira-sub",`The shipped descriptor next to ${ident(B)}, on the same ${t.intact+t.defects} frozen items and calibration pools, seeds and draws.`);
+  table("hf-basira",["Measure","Shipped descriptor",name(B)],[["Defects detected, frozen test",...b.map(s=>`${s.frozen_test.detected} / ${s.frozen_test.defects}`)],
+    ["False alerts on intact rings, frozen test",...b.map(s=>`${s.frozen_test.false_alerts} / ${s.frozen_test.intact}`)],
+    [`Shipped bank (m = ${s0.m}): long-run false-alert rate`,...b.map(s=>pct(s.shipped.long_run_false_alert_estimate))],
+    ["How often a bank this bad or worse occurs",...b.map(s=>pct(s.shipped.probability_of_a_bank_at_least_this_bad))],
+    ...B.baseline.study.map((r,i)=>[`Study, m = ${r.m}: mean false alerts / banks above ${a}`,...b.map(s=>`${pct(s.study[i].false_alert)} / ${pct(s.study[i].share_above)}`)])],[0,1,1]);
+  const rows=B.baseline.study.map((r,i)=>[r,B.model.study[i]]),gap=Math.max(...rows.map(([x,y])=>Math.abs(x.false_alert-y.false_alert))),
+    at=f=>rows.filter(([x,y])=>f(y.share_above,x.share_above)).map(([x])=>x.m),
+    share=[[at((y,x)=>y<x),"lower"],[at((y,x)=>y>x),"higher"]].filter(([m])=>m.length).map(([m,w])=>`${w} at m = ${list(m)}`),det=Math.min(...b.map(s=>s.detection));
+  put("hf-basira-note",`The frozen test and the long-run rate rest on one bank of ${s0.m} parts: a bank this bad or worse occurs ${pct(s0.probability_of_a_bank_at_least_this_bad)} of the time for the shipped descriptor and ${pct(B.model.shipped.probability_of_a_bank_at_least_this_bad)} for ${name(B)}. Over ${fmt(B.draws)} banks per size, under the shipped split-conformal rule, the descriptors are ${gap<.005?"roughly equal":"not equal"}: mean false-alert rates differ by at most ${fmt(100*gap,1)} percentage points, and the share of banks above ${a} with ${name(B)} is ${list(share)||"unchanged"}. ${det===1?"Detection in the study stayed at 100% for both.":`Mean detection in the study fell to ${pct(det)}.`}`);
+  const R=F.rasid,f=R.forecast,lv=R.levels,w=lv[lv.length-1]-lv[0],nom=pct(w,0),L=list(lv.map(String)),by={better:[],worse:[],level:[]};
+  put("hf-rasid-sub",`The shipped ridge forecaster next to ${ident(R)}, on the same ${R.days} rolling days, planner settings and verifier. Lower is better except coverage, whose target is ${nom}.`);
+  table("hf-rasid",["Measure","Ridge forecaster",name(R)],[["Load MAE (kW)",...f.mae.map(v=>fmt(v,3))],[`Mean pinball loss, levels ${L}`,...f.pinball.map(v=>fmt(v,3))],
+    [`Truncated CRPS, levels ${L}`,...f.crps.map(v=>fmt(v,3))],[`${nom} interval coverage of load`,...f.coverage.map(v=>pct(v))],
+    ...[["risk-neutral","neutral"],["risk-weighted","weighted"]].map(([p,k])=>[`Total cost over ${R.days} days, ${p} planner`,...R.cost[k].map(v=>fmt(v,2))])],[0,1,1]);
+  [["load MAE",f.mae],["pinball loss",f.pinball],["CRPS",f.crps],[nom+" interval coverage",f.coverage.map(v=>Math.abs(v-w))]].forEach(([k,[x,y]])=>by[y<x?"better":y>x?"worse":"level"].push(k));
+  put("hf-rasid-note",`Against the ridge forecast, ${name(R)} is ${Object.entries(by).filter(([,v])=>v.length).map(([k,v])=>`${k} on ${list(v)}`).join(" and ")}. Pinball loss and CRPS use the levels both forecasters produce, ${L}, so the ridge values are not those in reports/evaluation/rasid.json. ${fmt(R.pv_clipped)} negative solar values from ${name(R)} were clipped to zero. ${R.verified===R.days?"Every plan passed the independent verifier.":`One policy had only ${R.verified} of ${R.days} plans verified.`}`);
+  const ci=([x,y])=>`${sgn(x)} to ${sgn(y)}`,read=([x,y])=>x>0?"Costlier, excludes zero":y<0?"Cheaper, excludes zero":"Not resolved, spans zero",
+    key=R.paired.find(p=>p.policy==="chronos_risk_neutral"&&p.reference==="candidate_risk_neutral");
+  table("hf-paired",["Comparison","Mean daily difference","95% interval","Days cheaper / costlier","Reading"],
+    R.paired.map(p=>[p.label,sgn(p.mean_daily_difference),ci(p.mean_daily_difference_95ci),`${p.days_cheaper} / ${p.days_more_expensive}`,read(p.mean_daily_difference_95ci)]),[0,1,1,1,0]);
+  if(key){const[x,y]=key.mean_daily_difference_95ci;put("hf-paired-sub",`The forecast value of ${name(R)} over the ridge forecast, with the same risk-neutral planner, ${x>0||y<0?"is resolved: its 95% interval, "+ci([x,y])+" per day, excludes zero":`is not resolved by these ${R.days} days: its 95% interval, ${ci([x,y])} per day, spans zero`}.`)}
+  put("hf-paired-note",`Each difference is the ${name(R)} policy minus the reference; negative means ${name(R)} cost less. 95% intervals from a bootstrap: ${R.bootstrap}.`);
+  const S=F.sanad,d=S.documents,first=k=>{const x=S.lexical[k].recall_at_1,y=S.e5[k].recall_at_1;return y<x?"less often":y>x?"more often":"as often"},bi=first("bilingual");
+  put("hf-sanad-sub",`The engine's lexical retriever next to ${ident(S)}, each ranking every line of ${d.en+d.ar} generated datasheets (${d.en} English, ${d.ar} Arabic): ${fmt(S.queries)} ${S.unit}.`);
+  table("hf-sanad",["Query","Retriever","Recall@1","Recall@3","MRR@4"],[["bilingual","Bilingual (the engine's)"],["en","English label only"],["ar","Arabic label only"]].flatMap(([k,q])=>
+    [["Lexical (shipped)",S.lexical[k]],[name(S),S.e5[k]]].map(([who,m])=>[q,who,pct(m.recall_at_1),pct(m.recall_at_3),fmt(m.mrr_at_4,3)])),[0,0,1,1,1]);
+  put("hf-sanad-note",`With the bilingual query, ${name(S)} ranks the claim line first ${bi} ${bi==="as often"?"as":"than"} the lexical retriever; with the English label alone ${first("en")}, with the Arabic label alone ${first("ar")}. ${S.notes.join(" ")}`)}
+function render(){tiles();sanad();banks();share();tail();paired();ledes();safety();models()}
 render();let t;addEventListener("resize",()=>{clearTimeout(t);t=setTimeout(()=>{banks();share();tail();paired()},120)});
 </script>
 </body>
