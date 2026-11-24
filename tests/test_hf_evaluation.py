@@ -1,5 +1,9 @@
 """Evaluation harnesses with injectable components, checked against the shipped results (torch-free)."""
+import contextlib
+import io
 import json
+import os
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -7,12 +11,13 @@ from unittest import mock
 
 import numpy as np
 
-from mizan import evaluation, examples, hf_evaluation as hf
+from mizan import evaluation, examples, hf_evaluation as hf, models
 from mizan.basira import engine as b
-from mizan.core.contract import Refused
+from mizan.core.contract import Refused, canonical
 from mizan.rasid.forecast import records, vintage
 from mizan.rasid.solver import solve
 from mizan.sanad import engine as s
+from scripts import evaluate_hf
 
 ROOT = Path(__file__).resolve().parents[1]
 SHIPPED = json.loads((ROOT / "reports/evaluation/basira.json").read_text())
@@ -459,6 +464,179 @@ class SanadHarnessTests(unittest.TestCase):
         self.assertEqual(other["metrics"]["lexical"], first["metrics"]["lexical"])
         self.assertEqual(hf.sanad_gate(first, other)["mismatches"], ["lexical_ranker"])
         self.assertEqual(hf.sanad_gate(other, other)["mismatches"], ["lexical_ranker"])
+
+
+PASS = {"passed": True, "checked": ["stubbed"], "mismatches": []}
+FAIL = {"passed": False, "checked": ["detected", "false_alerts"], "mismatches": ["detected"]}
+STUB_LOADERS = {"basira": lambda root: b.features, "rasid": lambda root: naive_stub, "sanad": lambda root: _oracle_embedder()}
+# Reduced BASIRA and RASID sizes for the writing path; SANAD at the protocol size its write guard requires.
+SMALL = {"basira": QUICK, "rasid": {"days": 2}, "sanad": {"n_docs": 120, "seed": 2024}}
+SYSTEMS = ("basira", "rasid", "sanad")
+
+
+def _identity(kind, root):
+    pin = models.PINS[kind]
+    return {"repo": pin["repo"], "revision": pin["revision"], "weight_sha256": pin["weight_sha256"],
+            "manifest_sha256": "a" * 64, "manifest_object": "b" * 64}
+
+
+class EvaluateScriptTests(unittest.TestCase):
+    """scripts/evaluate_hf.py with stub models: gates before writing, atomic files, repeat check (no torch)."""
+
+    def setUp(self):
+        self.out = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.err = self.enterContext(contextlib.redirect_stderr(io.StringIO()))
+        self.enterContext(mock.patch.object(models, "model_identity", side_effect=_identity))
+
+    def read(self, kind):
+        return json.loads((self.out / f"{kind}.json").read_text())
+
+    def test_failed_gate_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(hf, "basira_gate", return_value={"passed": False, "checked": [], "mismatches": ["detected"]}):
+            with self.assertRaises(SystemExit) as e:
+                evaluate_hf.run("unused", d, only="basira", loaders={"basira": lambda root: b.features}, quick=True)
+            self.assertEqual(e.exception.code, 2); self.assertEqual(list(Path(d).iterdir()), [])
+
+    def test_a_failed_gate_stops_before_the_model_loads_and_names_the_mismatch(self):
+        loaded = []; out = self.out / "reports" / "hf"
+        with mock.patch.dict(evaluate_hf.FULL_SIZES, SMALL), mock.patch.object(hf, "basira_gate", return_value=FAIL), \
+             self.assertRaises(SystemExit) as e:
+            evaluate_hf.run("unused", out, only="basira", loaders={"basira": lambda root: loaded.append(root) or b.features})
+        self.assertEqual(e.exception.code, 2); self.assertEqual(loaded, []); self.assertFalse(out.exists())
+        self.assertIn("basira: gate failed, 1 of 2 checks differ: detected", self.err.getvalue())
+
+    def test_nothing_is_written_until_every_requested_gate_passes(self):
+        with mock.patch.dict(evaluate_hf.FULL_SIZES, SMALL), mock.patch.object(hf, "basira_gate", return_value=PASS), \
+             mock.patch.object(hf, "rasid_gate", return_value={**FAIL, "mismatches": ["target_days"]}), self.assertRaises(SystemExit) as e:
+            evaluate_hf.run("unused", self.out, loaders=STUB_LOADERS)   # BASIRA passes and is complete; RASID's gate fails
+        self.assertEqual(e.exception.code, 2); self.assertEqual(list(self.out.iterdir()), [])
+        self.assertIn("basira: gate passed", self.err.getvalue()); self.assertIn("rasid: gate failed", self.err.getvalue())
+
+    def test_writes_every_record_once_all_gates_pass(self):
+        renames = []; real = os.replace
+        def renaming(src, dst):
+            renames.append((Path(src).name, Path(dst).name, sorted(p.name for p in self.out.iterdir()))); return real(src, dst)
+        with mock.patch.dict(evaluate_hf.FULL_SIZES, SMALL), mock.patch.object(hf, "basira_gate", return_value=PASS), \
+             mock.patch.object(hf, "rasid_gate", return_value=PASS), mock.patch.object(evaluate_hf.os, "replace", side_effect=renaming):
+            result = evaluate_hf.run("unused", self.out, loaders=STUB_LOADERS)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()), [k + ".json" for k in SYSTEMS])   # no staging file left
+        # Each file is staged in the output directory and renamed into place; all are staged before the first rename.
+        self.assertEqual([dst for _, dst, _ in renames], [k + ".json" for k in SYSTEMS])
+        for (src, _, _), kind in zip(renames, SYSTEMS):
+            self.assertTrue(src.startswith(f".{kind}.") and src.endswith(".tmp"), src)
+        self.assertEqual(renames[0][2], sorted(src for src, _, _ in renames))
+        lines = evaluate_hf.summary(result).splitlines()
+        self.assertEqual([line.split(":")[0] for line in lines], list(SYSTEMS))
+        self.assertTrue(all("gate passed" in line for line in lines))
+        for kind in SYSTEMS:
+            r = self.read(kind)
+            self.assertEqual(r, json.loads(canonical(result[kind])))
+            self.assertEqual(set(r), {"gate", "baseline", "model", "identity", "environment", "settings", "notes",
+                                      "elapsed_seconds", "fixture_only"})
+            self.assertTrue(r["gate"]["passed"]); self.assertTrue(r["gate"]["rule"]); self.assertTrue(r["gate"]["against"])
+            self.assertEqual(r["identity"], {**_identity(kind, "unused"), "note": evaluate_hf.IDENTITY_NOTE})
+            self.assertEqual({k: r["environment"][k] for k in evaluation.environment()}, evaluation.environment())
+            for k in ("torch", "transformers", "chronos_forecasting", "torch_threads"):
+                self.assertIn(k, r["environment"])
+            self.assertTrue(r["notes"]); self.assertIs(r["fixture_only"], True)
+        for text in ("manifest_sha256", "this machine's signed import", "manifest_object", "reproducible by anyone re-importing the pin"):
+            self.assertIn(text, evaluate_hf.IDENTITY_NOTE)
+        basira, rasid, sanad = (self.read(k) for k in SYSTEMS)
+        # BASIRA: the gated baseline is the shipped descriptor; the model is the loaded feature function under its own profile.
+        self.assertEqual(basira["baseline"]["profile"], b.DESCRIPTOR)
+        self.assertEqual(basira["model"]["profile"], "hf:facebook/dinov2-small@" + models.PINS["basira"]["revision"] + "/224-imagenet-v1")
+        self.assertEqual((basira["settings"]["draws"], basira["settings"]["sizes"]), (3, [24]))
+        # RASID: one run split into the ridge view and the Chronos view; the method texts are in the settings.
+        self.assertEqual(set(rasid["baseline"]["decision_quality"]), set(evaluation.POLICIES))
+        self.assertEqual(set(rasid["model"]["decision_quality"]), {"chronos", "chronos_risk_neutral"})
+        self.assertEqual(len(rasid["model"]["paired_comparisons"]), 3)
+        self.assertEqual((rasid["settings"]["scenario_rule"], rasid["settings"]["forecast_note"]), (hf.SCENARIO_RULE, hf.FORECAST_NOTE))
+        for text in ("sorted across levels", "monotone rearrangement", "clipped at zero"):
+            self.assertIn(text, rasid["settings"]["quantile_repair"])
+        self.assertEqual(set(rasid["gate"]["total_cost_relative_difference"]), set(evaluation.POLICIES))
+        # SANAD: the protocol size, the labelled query count and the ceiling note.
+        self.assertEqual((sanad["settings"]["n_docs"], sanad["settings"]["seed"]), (120, 2024))
+        for half in ("baseline", "model"):
+            self.assertEqual(sanad[half]["queries_unit"], "(document, attribute) pairs, each ranked with three query kinds")
+        self.assertEqual(sanad["model"]["metrics"]["bilingual"]["all"]["recall_at_1"], 1.0)   # the oracle stub
+        notes = " ".join(sanad["notes"])
+        for text in ("near its ceiling", "exact attribute label", "English-only and Arabic-only queries are the discriminating comparison"):
+            self.assertIn(text, notes)
+
+    def test_repeat_records_an_identical_second_run(self):
+        with mock.patch.dict(evaluate_hf.FULL_SIZES, SMALL), mock.patch.object(hf, "rasid_gate", return_value=PASS):
+            r = evaluate_hf.run("unused", self.out, only="rasid", repeat=True, loaders=STUB_LOADERS)["rasid"]
+        self.assertIs(r["repeat_run"]["identical"], True); self.assertEqual(r["repeat_run"]["differences"], [])
+        self.assertIs(self.read("rasid")["repeat_run"]["identical"], True)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()), ["rasid.json"])
+
+    def test_repeat_keeps_the_first_result_and_names_every_difference(self):
+        loads = iter([naive_stub, stub])   # the model reloads as another forecaster; the ridge side cannot change
+        with mock.patch.dict(evaluate_hf.FULL_SIZES, SMALL), mock.patch.object(hf, "rasid_gate", return_value=PASS):
+            r = evaluate_hf.run("unused", self.out, only="rasid", repeat=True, loaders={"rasid": lambda root: next(loads)})["rasid"]
+        rr = r["repeat_run"]
+        self.assertIs(rr["identical"], False); self.assertEqual(rr["differing_values"], len(rr["differences"]))
+        self.assertTrue(rr["differences"]); self.assertTrue(all(d["path"].startswith("model.") for d in rr["differences"]), rr["differences"])
+        mae = next(d for d in rr["differences"] if d["path"] == "model.forecast.chronos_mae_kw")
+        self.assertEqual(mae["first"], r["model"]["forecast"]["chronos_mae_kw"])   # the first run is the one kept
+        self.assertEqual(mae["abs_difference"], abs(mae["first"] - mae["second"])); self.assertGreater(mae["abs_difference"], 0)
+        self.assertEqual(rr["max_abs_difference"], max(d.get("abs_difference", 0) for d in rr["differences"]))
+        self.assertEqual(self.read("rasid")["repeat_run"], json.loads(canonical(rr)))
+
+    def test_differences_cover_absent_values_and_list_lengths(self):
+        d = evaluate_hf.differences({"a": [1, 2.5], "b": "x", "c": True}, {"a": [1, 2.0, 3], "b": "y", "d": None})
+        self.assertEqual(d, [{"path": "a[1]", "first": 2.5, "second": 2.0, "abs_difference": 0.5},
+                             {"path": "a[2]", "first": None, "second": 3, "absent_in": "first"},
+                             {"path": "b", "first": "x", "second": "y"},
+                             {"path": "c", "first": True, "second": None, "absent_in": "second"},
+                             {"path": "d", "first": None, "second": None, "absent_in": "first"}])
+        self.assertEqual(evaluate_hf.differences({"x": [1.0, {"y": 2}]}, {"x": [1.0, {"y": 2}]}), [])
+        self.assertEqual(evaluate_hf.differences({"x": 1}, {"x": 1.0}), [{"path": "x", "first": 1, "second": 1.0, "abs_difference": 0.0}])
+
+    def test_sanad_results_are_written_only_at_the_protocol_size(self):
+        for size in ({"n_docs": 10, "seed": 2024}, {"n_docs": 120, "seed": 2025}):
+            with self.subTest(**size), mock.patch.dict(evaluate_hf.FULL_SIZES, {"sanad": size}), self.assertRaises(Refused) as caught:
+                evaluate_hf.run("unused", self.out, only="sanad", loaders=STUB_LOADERS)   # its gate passes at any size
+            self.assertEqual(caught.exception.code, "PROTOCOL_SIZE"); self.assertEqual(list(self.out.iterdir()), [])
+
+    def test_quick_mode_runs_every_system_at_reduced_size_and_never_writes(self):
+        out = self.out / "never"
+        with mock.patch.object(hf, "basira_gate", return_value=PASS), mock.patch.object(hf, "rasid_gate", return_value=PASS):
+            r = evaluate_hf.run("unused", out, repeat=True, loaders=STUB_LOADERS, quick=True)
+        self.assertFalse(out.exists()); self.assertEqual(set(r), set(SYSTEMS)); self.assertEqual(self.err.getvalue(), "")
+        self.assertEqual(r["basira"]["model"]["calibration_study"]["draws_per_size"], 3)
+        self.assertEqual(r["basira"]["model"]["calibration_study"]["pools"],
+                         {"calibration_pool_normals": 60, "evaluation_normals": 60, "evaluation_defects": 20})
+        self.assertEqual(r["rasid"]["baseline"]["target_days"], 2); self.assertEqual(r["sanad"]["settings"]["n_docs"], 10)
+        self.assertTrue(all(r[k]["repeat_run"]["identical"] for k in SYSTEMS))
+
+    def test_rasid_views_split_one_run_without_losing_a_field(self):
+        r = hf.rasid_hf(stub, days=2); base, model = evaluate_hf.rasid_views(r)
+        for i, row in enumerate(r["origins"]):
+            self.assertEqual({**base["origins"][i], **model["origins"][i]}, row)
+            self.assertEqual(base["origins"][i]["date"], model["origins"][i]["date"])
+            self.assertFalse({"ridge_mae", "candidate_cost"} & set(model["origins"][i]))
+            self.assertFalse({"chronos_mae", "chronos_cost"} & set(base["origins"][i]))
+        self.assertEqual({**base["forecast"], **model["forecast"], "note": r["forecast"]["note"]}, r["forecast"])
+        self.assertEqual({**base["decision_quality"], **model["decision_quality"]}, r["decision_quality"])
+        self.assertEqual(set(base["decision_quality"]), set(evaluation.POLICIES))
+        self.assertEqual(model["paired_comparisons"], r["paired_comparisons"]); self.assertNotIn("paired_comparisons", base)
+        self.assertEqual(hf.rasid_gate(base, RASID), hf.rasid_gate(r, RASID))   # the baseline holds everything the gate reads
+        r["origins"][1]["extra"] = 1.0
+        with self.assertRaises(Refused) as caught:
+            evaluate_hf.rasid_views(r)
+        self.assertEqual(caught.exception.code, "SPLIT")
+
+    def test_sanad_views_hold_the_lexical_and_e5_halves_of_one_run(self):
+        r = hf.sanad_hf(_oracle_embedder(), n_docs=10, seed=7); base, model = evaluate_hf.sanad_views(r)
+        self.assertEqual((base["retriever"], base["ranker"], base["metrics"]), ("lexical", hf.LEXICAL_RANKER, r["metrics"]["lexical"]))
+        self.assertEqual((model["retriever"], model["metrics"]), ("e5", r["metrics"]["e5"]))
+        for k in ("set_digest", "documents", "queries", "queries_by_language"):
+            self.assertEqual((base[k], model[k]), (r[k], r[k]))
+        self.assertEqual(base["queries_unit"], model["queries_unit"])
+        with self.assertRaises(Refused) as caught:
+            evaluate_hf.sanad_views({**r, "extra": 1})
+        self.assertEqual(caught.exception.code, "SPLIT")
 
 
 if __name__ == "__main__":

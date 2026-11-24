@@ -69,12 +69,14 @@ def verify_local(kind,root):
 
 
 def model_identity(kind,root):
-    """Identity of a verified checkpoint: pinned repository and revision, weight digest, manifest digest."""
+    """Identity of a verified checkpoint: pinned repository and revision, weight digest, and two manifest digests.
+    manifest_sha256 hashes this machine's signed import file (its seal carries a local signature); manifest_object
+    is digest() of the signed manifest object (the pin and each file's SHA-256), the same for every import of the pin."""
     d=verify_local(kind,root);raw=(d/"mizan-manifest.json").read_bytes();manifest=json.loads(raw)["manifest"]
     weight={row["name"]:row["sha256"] for row in manifest["files"]}["model.safetensors"]
     require(weight==PINS[kind]["weight_sha256"],"WEIGHT_HASH","Unapproved checkpoint")
     return {"repo":manifest["pin"]["repo"],"revision":manifest["pin"]["revision"],"weight_sha256":weight,
-            "manifest_sha256":hashlib.sha256(raw).hexdigest()}
+            "manifest_sha256":hashlib.sha256(raw).hexdigest(),"manifest_object":digest(manifest)}
 
 
 def _torch():
