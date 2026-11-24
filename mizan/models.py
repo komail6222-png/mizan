@@ -68,48 +68,110 @@ def verify_local(kind,root):
     return d
 
 
+def model_identity(kind,root):
+    """Identity of a verified checkpoint: pinned repository and revision, weight digest, manifest digest."""
+    d=verify_local(kind,root);raw=(d/"mizan-manifest.json").read_bytes();manifest=json.loads(raw)["manifest"]
+    weight={row["name"]:row["sha256"] for row in manifest["files"]}["model.safetensors"]
+    require(weight==PINS[kind]["weight_sha256"],"WEIGHT_HASH","Unapproved checkpoint")
+    return {"repo":manifest["pin"]["repo"],"revision":manifest["pin"]["revision"],"weight_sha256":weight,
+            "manifest_sha256":hashlib.sha256(raw).hexdigest()}
+
+
+def _torch():
+    """Import torch with the fixed seed, deterministic kernels and thread count every loader shares."""
+    try:import torch
+    except ImportError as exc:raise Refused("HF_DEPENDENCY","Install the optional model runtime") from exc
+    torch.manual_seed(0);torch.use_deterministic_algorithms(True,warn_only=True);torch.set_num_threads(8)
+    return torch
+
+
+def _auto(path,tokenizer=False):
+    try:from transformers import AutoModel,AutoTokenizer
+    except ImportError as exc:raise Refused("HF_DEPENDENCY","Install the optional model runtime") from exc
+    model=AutoModel.from_pretrained(path,local_files_only=True,trust_remote_code=False,use_safetensors=True).eval()
+    return (model,AutoTokenizer.from_pretrained(path,local_files_only=True,trust_remote_code=False)) if tokenizer else model
+
+
+def dinov2_features(root):
+    """DINOv2 patch grid for an image: bicubic 224, ImageNet normalisation, last hidden state without CLS,
+    L2-normalised per patch; float64 array of shape (16, 16, 384)."""
+    path=verify_local("basira",root);os.environ["HF_HUB_OFFLINE"]="1";torch=_torch()
+    import numpy as np
+    from PIL import Image
+    model=_auto(path)
+    mean=np.array([.485,.456,.406],np.float32);std=np.array([.229,.224,.225],np.float32)
+    def features(image):
+        rgb=np.asarray(image.convert("RGB").resize((224,224),Image.Resampling.BICUBIC),dtype=np.float32)/255
+        x=torch.from_numpy(((rgb-mean)/std).transpose(2,0,1).copy())[None]
+        with torch.inference_mode():
+            h=model(pixel_values=x).last_hidden_state[0,1:]
+            grid=torch.nn.functional.normalize(h,dim=-1).reshape(16,16,-1).cpu().numpy()
+        return grid.astype(np.float64)
+    return features
+
+
+def chronos_forecaster(root,context_length=2048):
+    """Chronos-Bolt quantiles for the next 24 hours of load and solar, forecast once per series from its
+    trailing context (1-D, oldest first, last `context_length` values); shape (24, 2, len(levels)).
+    Levels must be strictly increasing. The model's quantile heads can cross (seen on near-zero solar), so each
+    hour's values are sorted along the levels: the monotone rearrangement, which keeps the set of values."""
+    path=verify_local("rasid",root);os.environ["HF_HUB_OFFLINE"]="1";torch=_torch()
+    import numpy as np
+    try:from chronos import BaseChronosPipeline
+    except ImportError as exc:raise Refused("HF_DEPENDENCY","Install chronos-forecasting") from exc
+    pipeline=BaseChronosPipeline.from_pretrained(str(path),device_map="cpu",local_files_only=True)
+    def forecast(load,solar,levels):
+        levels=[float(x) for x in levels];out=[]
+        require(levels and all(a<b for a,b in zip(levels,levels[1:])),"LEVELS","Quantile levels must be strictly increasing")
+        for series in (load,solar):
+            series=np.asarray(series,dtype=np.float64)
+            require(series.ndim==1 and series.size>0,"CONTEXT","Each context must be a non-empty 1-D series")
+            context=torch.tensor(series[-context_length:],dtype=torch.float32)
+            with torch.inference_mode():
+                quantiles,_=pipeline.predict_quantiles(context,prediction_length=24,quantile_levels=levels)
+            out.append(quantiles[0].cpu().numpy())
+        return np.sort(np.stack(out,axis=1),axis=-1).astype(np.float64)
+    return forecast
+
+
+def e5_embedder(root):
+    """Multilingual E5 sentence vectors: mean pooling over the attention mask, L2-normalised; (n, 384) float64.
+    Callers add the `query: ` and `passage: ` prefixes; all strings are encoded as one padded batch."""
+    path=verify_local("sanad",root);os.environ["HF_HUB_OFFLINE"]="1";torch=_torch()
+    import numpy as np
+    model,tok=_auto(path,tokenizer=True)
+    def embed(strings):
+        x=tok(list(strings),padding=True,truncation=True,max_length=256,return_tensors="pt")
+        with torch.inference_mode():
+            h=model(**x).last_hidden_state;mask=x.attention_mask.unsqueeze(-1)
+            v=torch.nn.functional.normalize((h*mask).sum(1)/mask.sum(1).clamp_min(1),dim=-1).cpu().numpy()
+        return v.astype(np.float64)
+    return embed
+
+
 def experiment(kind,root):
     """Run the pinned model on public fixtures, separate from the deployed CPU calibration."""
-    path=verify_local(kind,root)
-    os.environ["HF_HUB_OFFLINE"]="1"
-    try:
-        import torch
-        from transformers import AutoModel,AutoTokenizer
-    except ImportError as exc:raise Refused("HF_DEPENDENCY","Install the optional model runtime") from exc
+    pin=PINS[kind]
     from . import examples
     import numpy as np
-    with torch.inference_mode():
-        if kind=="sanad":
-            model=AutoModel.from_pretrained(path,local_files_only=True,trust_remote_code=False,use_safetensors=True).eval()
-            tok=AutoTokenizer.from_pretrained(path,local_files_only=True,trust_remote_code=False)
-            docs=examples.procurement()["documents"]
-            strings=["query: ما القدرة الظاهرية الاسمية لهذا الجهاز؟"]+["passage: "+s for d in docs for s in d["pages"][0].splitlines()[1:]]
-            x=tok(strings,padding=True,truncation=True,max_length=256,return_tensors="pt")
-            h=model(**x).last_hidden_state;mask=x.attention_mask.unsqueeze(-1)
-            v=torch.nn.functional.normalize((h*mask).sum(1)/mask.sum(1).clamp_min(1),dim=-1)
-            order=(v[1:]@v[0]).argsort(descending=True).tolist()
-            answer={"ranked_excerpts":[strings[i+1][9:] for i in order],"scope":"retrieval experiment; rule verifier retains verdict authority"}
-        elif kind=="basira":
-            from PIL import Image
-            from .basira.engine import fit,rank_decision,score,decode_image
-            model=AutoModel.from_pretrained(path,local_files_only=True,trust_remote_code=False,use_safetensors=True).eval()
-            def fn(im):
-                rgb=np.asarray(im.convert("RGB").resize((224,224),Image.Resampling.BICUBIC),dtype=np.float32)/255
-                x=(rgb-np.array([.485,.456,.406],np.float32))/np.array([.229,.224,.225],np.float32)
-                h=model(pixel_values=torch.from_numpy(x.transpose(2,0,1).copy())[None]).last_hidden_state[0,1:]
-                return torch.nn.functional.normalize(h,dim=-1).reshape(16,16,-1).cpu().numpy()
-            payload=examples.inspection();b,cal,rev,_,_=fit(payload["reference"],payload["calibration"],fn,PINS[kind]["revision"]+"/224-imagenet-v1")
-            value,_=score(fn(decode_image(payload["query"]["png"])),b)
-            answer={"score":value,"bank_digest":rev,**rank_decision(cal,value,".05")}
-        else:
-            try:from chronos import BaseChronosPipeline
-            except ImportError as exc:raise Refused("HF_DEPENDENCY","Install chronos-forecasting") from exc
-            model=BaseChronosPipeline.from_pretrained(str(path),device_map="cpu",local_files_only=True)
-            rows=examples.electricity(42);context=torch.tensor([x["load"] for x in rows[:-24]],dtype=torch.float32)
-            quantiles,mean=model.predict_quantiles(context,prediction_length=24,quantile_levels=[.1,.5,.9])
-            y=np.array([x["load"] for x in rows[-24:]])
-            q=quantiles.detach().cpu().numpy().reshape(24,3)
-            answer={"quantiles":q.tolist(),"mae":float(np.mean(abs(q[:,1]-y))),
-                    "seasonal_naive_mae":float(np.mean(abs(np.array([x["load"] for x in rows[-192:-168]])-y))),
-                    "scope":"single illustrative held-out day"}
-    return {"model":PINS[kind]["repo"],"revision":PINS[kind]["revision"],"result":answer}
+    if kind=="sanad":
+        embed=e5_embedder(root)
+        docs=examples.procurement()["documents"]
+        strings=["query: ما القدرة الظاهرية الاسمية لهذا الجهاز؟"]+["passage: "+s for d in docs for s in d["pages"][0].splitlines()[1:]]
+        v=embed(strings);order=np.argsort(-(v[1:]@v[0]),kind="stable").tolist()
+        answer={"ranked_excerpts":[strings[i+1][9:] for i in order],"scope":"retrieval experiment; rule verifier retains verdict authority"}
+    elif kind=="basira":
+        from .basira.engine import fit,rank_decision,score,decode_image
+        fn=dinov2_features(root)
+        payload=examples.inspection();b,cal,rev,_,_=fit(payload["reference"],payload["calibration"],fn,pin["revision"]+"/224-imagenet-v1")
+        value,_=score(fn(decode_image(payload["query"]["png"])),b)
+        answer={"score":value,"bank_digest":rev,**rank_decision(cal,value,".05")}
+    else:
+        forecast=chronos_forecaster(root)
+        rows=examples.electricity(42);history=rows[:-24]
+        q=forecast(np.array([x["load"] for x in history]),np.array([x["pv"] for x in history]),[.1,.5,.9])[:,0,:]
+        y=np.array([x["load"] for x in rows[-24:]])
+        answer={"quantiles":q.tolist(),"mae":float(np.mean(abs(q[:,1]-y))),
+                "seasonal_naive_mae":float(np.mean(abs(np.array([x["load"] for x in rows[-192:-168]])-y))),
+                "scope":"single illustrative held-out day"}
+    return {"model":pin["repo"],"revision":pin["revision"],"result":answer}
