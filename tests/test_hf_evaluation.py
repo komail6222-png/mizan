@@ -9,7 +9,9 @@ import numpy as np
 
 from mizan import evaluation, examples, hf_evaluation as hf
 from mizan.basira import engine as b
+from mizan.core.contract import Refused
 from mizan.rasid.forecast import records, vintage
+from mizan.rasid.solver import solve
 
 ROOT = Path(__file__).resolve().parents[1]
 SHIPPED = json.loads((ROOT / "reports/evaluation/basira.json").read_text())
@@ -118,8 +120,63 @@ class RasidHarnessTests(unittest.TestCase):
                   "ridge_coverage_80_load", "chronos_mean_pinball", "chronos_truncated_crps", "chronos_coverage_80_load"):
             self.assertIsInstance(r["forecast"][k], float, k)
         self.assertEqual(r["forecast"]["shared_levels"], [0.1, 0.5, 0.9])
-        for text in ("0.1, 0.3, 0.5, 0.7 and 0.9", "4 − j", "0.2", "sorted across levels", "clipped at zero"):
+        for text in ("0.1, 0.3, 0.5, 0.7 and 0.9", "4 − j", "0.2", "sorted across levels", "clipped at zero",
+                     "Load quantiles are not clipped"):
             self.assertIn(text, r["scenario_rule"])
+        self.assertIn("must end at the hour before the origin", r["forecast"]["note"])
+
+    def test_mirror_equals_the_shipped_function_in_this_environment(self):
+        r = hf.rasid_hf(naive_stub, days=2); e = evaluation.energy_evaluation(days=2)
+        shared = set(e["origins"][0]) - {"mean_pinball", "truncated_crps", "domain"}   # the shipped scores use all five ridge levels
+        self.assertEqual(set(r["origins"][0]) & set(e["origins"][0]), shared); self.assertEqual(len(shared), 4 + 2 * 5)
+        self.assertEqual([{k: x[k] for k in shared} for x in r["origins"]], [{k: x[k] for k in shared} for x in e["origins"]])
+        self.assertEqual({k: r["decision_quality"][k] for k in evaluation.POLICIES}, e["decision_quality"])
+        self.assertEqual((r["forecast"]["ridge_mae_kw"], r["forecast"]["seasonal_naive_mae_kw"]), (e["ridge_mae_kw"], e["seasonal_naive_mae_kw"]))
+
+    def test_refuses_a_misaligned_context_and_a_malformed_forecast(self):
+        real = hf.chronos_context
+        with mock.patch.object(hf, "chronos_context", side_effect=lambda rows, origin: real(rows, origin - timedelta(hours=1))):
+            with self.assertRaises(Refused) as caught:
+                hf.rasid_hf(naive_stub, days=1)   # the run would end two hours before the origin
+        self.assertEqual(caught.exception.code, "CONTEXT")
+        def poisoned(value):
+            def forecaster(load, pv, levels):
+                q = naive_stub(load, pv, levels).astype(float); q[5, 1, 2] = value; return q
+            return forecaster
+        for name, bad in (("too few levels", lambda load, pv, levels: naive_stub(load, pv, levels)[:, :, :4]),
+                          ("23 hours", lambda load, pv, levels: naive_stub(load, pv, levels)[:23]),
+                          ("one series", lambda load, pv, levels: naive_stub(load, pv, levels)[:, :1]),
+                          ("nan", poisoned(np.nan)), ("inf", poisoned(-np.inf))):
+            with self.subTest(name), self.assertRaises(Refused) as caught:
+                hf.rasid_hf(bad, days=1)
+            self.assertEqual(caught.exception.code, "FORECAST")
+        def negative_load(load, pv, levels):
+            q = naive_stub(load, pv, levels).astype(float); q[3, 0, 0] = -1.0; return q
+        with self.assertRaises(Refused) as caught:   # load is not clipped (SCENARIO_RULE): the planner's input check stops it
+            hf.rasid_hf(negative_load, days=1)
+        self.assertEqual(caught.exception.code, "INPUT_RANGE")
+
+    def test_each_policy_carries_its_own_state_and_peak(self):
+        problems, plans, peaks = [], [], []
+        def problem(name, f, y, state, peak):
+            problems.append((state, peak)); return evaluation.policy_problem(name, f, y, state, peak)
+        def solving(p):
+            plans.append(solve(p)); return plans[-1]
+        def settling(plan, y, p):
+            out = evaluation.realized(plan, y, p); peaks.append(out[1])
+            if p["assets"]["capacity"]:   # most plans end at the 40 kWh terminal bound: make each end state distinct
+                plan["soc"][-1] += 0.01 * len(peaks)
+            return out
+        with mock.patch.object(hf, "policy_problem", side_effect=problem), mock.patch.object(hf, "solve", side_effect=solving), \
+             mock.patch.object(hf, "realized", side_effect=settling):
+            hf.rasid_hf(stub, days=3)
+        n = len(hf.POLICIES_HF); self.assertEqual(len(problems), 3 * n)
+        self.assertEqual(problems[:n], [(0.0 if k == "no_battery" else 40.0, 0.0) for k in hf.POLICIES_HF])
+        for day in (1, 2):   # 13 and 14 February, the same month: each policy continues from its own earlier days
+            for i, label in enumerate(hf.POLICIES_HF):
+                self.assertEqual(problems[day * n + i], (plans[(day - 1) * n + i]["soc"][-1], max(peaks[i::n][:day])), (day, label))
+        chronos, candidate = hf.POLICIES_HF.index("chronos"), hf.POLICIES_HF.index("candidate")
+        self.assertNotEqual(problems[n + chronos], problems[n + candidate])   # a shared state or peak would show here
 
     def test_context_stops_before_origin_and_at_a_gap(self):
         rows = records(examples.electricity(44)); origin = datetime(2026, 2, 12, tzinfo=timezone.utc)
@@ -202,6 +259,11 @@ class RasidHarnessTests(unittest.TestCase):
         r["origins"][3]["ridge_mae"] += 1e-9; r["forecast"]["seasonal_naive_mae_kw"] += 2e-9; r["origins"][3]["coverage_80_load"] -= 1 / 24
         self.assertEqual(hf.rasid_gate(r, RASID)["mismatches"],
                          ["forecast.seasonal_naive_mae_kw", f"origins[date={day}].ridge_mae", f"origins[date={day}].coverage_80_load"])
+        # The tolerance is per field: the seasonal-naive error has it, the coverage and the date do not.
+        r = _scaled(RASID, "candidate", 1.0); r["origins"][5]["naive_mae"] += 5e-10; r["origins"][5]["coverage_80_load"] += 1e-12
+        r["origins"][6]["date"] += " "
+        self.assertEqual(hf.rasid_gate(r, RASID)["mismatches"],
+                         [f"origins[date={RASID['origins'][5]['date']}].coverage_80_load", f"origins[date={RASID['origins'][6]['date']}].date"])
         # A value missing on one side never matches; a shorter run fails on every absent row.
         r = _scaled(RASID, "candidate", 1.0); del r["decision_quality"]["no_battery"]["verified_feasible_plans"]
         self.assertEqual(hf.rasid_gate(r, RASID)["mismatches"], ["decision_quality.no_battery.verified_feasible_plans"])
@@ -214,6 +276,16 @@ class RasidHarnessTests(unittest.TestCase):
         rows = RASID["origins"]
         self.assertEqual(hf._decision_summary(rows, evaluation.POLICIES), evaluation.decision_summary(rows))
         self.assertEqual(hf._decision_summary(rows, evaluation.POLICIES), RASID["decision_quality"])
+        # A Chronos policy is summarised exactly as the shipped function summarises a shipped one. The costs are
+        # crossed (chronos gets seasonal_naive's, chronos_risk_neutral gets candidate's) so a missing remap shows.
+        copied = [{**r, "chronos_cost": r["seasonal_naive_cost"], "chronos_status": r["seasonal_naive_status"],
+                   "chronos_risk_neutral_cost": r["candidate_cost"], "chronos_risk_neutral_status": r["candidate_status"]}
+                  for r in rows]
+        s = hf._decision_summary(copied)
+        self.assertEqual(list(s), list(hf.POLICIES_HF))
+        self.assertEqual({k: s[k] for k in evaluation.POLICIES}, RASID["decision_quality"])
+        self.assertEqual((s["chronos"], s["chronos_risk_neutral"]),
+                         (RASID["decision_quality"]["seasonal_naive"], RASID["decision_quality"]["candidate"]))
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ import numpy as np
 from . import examples
 from .basira import engine as b
 from .core.contract import require
-from .evaluation import POLICIES,paired_comparison,policy_problem,realized,tail_mean
+from .evaluation import POLICIES,decision_summary,paired_comparison,policy_problem,realized
 from .rasid.forecast import HOUR,forecast,quantile_scores,records,vintage
 from .rasid.solver import solve
 from .rasid.verify import verify
@@ -101,13 +101,15 @@ def _basira_study(score,shipped,ident,draws,sizes,pools,alpha=BASIRA_ALPHA,delta
             "minimum_m_for_pac":b.minimum_m(alpha,delta),"rows":rows,"scope":BASIRA_STUDY_SCOPE}
 
 
-def _row_pairs(name,key,got_rows,want_rows,fields=None):
-    """Named pairs for two row lists matched by position (all fields of both sides unless given); a missing row is empty."""
-    pairs=[]
+def _row_pairs(name,key,got_rows,want_rows,fields=None,tests=None):
+    """Named pairs for two row lists matched by position (all fields of both sides unless given); a missing row is empty.
+    tests maps a field to its _compare test; every other field is compared exactly."""
+    pairs=[];tests=tests or {}
     for i in range(max(len(got_rows),len(want_rows))):
         g=got_rows[i] if i<len(got_rows) else {};w=want_rows[i] if i<len(want_rows) else {}
         label=f"{name}[{key}={w.get(key,g.get(key))}]."
-        pairs+=[(label+k,g.get(k,_MISSING),w.get(k,_MISSING)) for k in fields or sorted(set(g)|set(w))]
+        pairs+=[(label+k,g.get(k,_MISSING),w.get(k,_MISSING))+((tests[k],) if k in tests else ())
+                for k in fields or sorted(set(g)|set(w))]
     return pairs
 
 
@@ -146,12 +148,15 @@ SCENARIO_RULE=("Five equally weighted scenarios (weight 0.2 each) from the forec
                "0.1, 0.3, 0.5, 0.7 and 0.9, numbered j = 0 to 4: scenario j pairs load quantile path j with solar "
                "quantile path 4 − j, so high load meets low solar. Before pairing, each hour's quantiles are sorted "
                "across levels (monotone rearrangement) and solar values below zero are clipped at zero (counted in "
-               "pv_values_clipped). The chronos and chronos_risk_neutral policies are the candidate (risk weight 0.35) "
+               "pv_values_clipped). Load quantiles are not clipped: a negative load value stops the run at the "
+               "planner's input check. The chronos and chronos_risk_neutral policies are the candidate (risk weight 0.35) "
                "and candidate_risk_neutral problems with only these weights and scenarios replaced; the ridge policies "
                "keep their four reduced residual scenarios as shipped.")
 FORECAST_NOTE=("Accuracy on the load series, as in the shipped evaluation. MAE of the ridge point forecast, the "
                "seasonal-naive path and the Chronos median (0.5). Pinball loss and truncated CRPS from quantile_scores "
-               "on the shared levels 0.1, 0.5 and 0.9 for both forecasters; 80% coverage between 0.1 and 0.9.")
+               "on the shared levels 0.1, 0.5 and 0.9 for both forecasters; 80% coverage between 0.1 and 0.9. "
+               "The forecaster sees only the contiguous run of hours known at the origin, and that run must end at the "
+               "hour before the origin, so that its 24 steps are the planned day; otherwise the run stops (CONTEXT).")
 
 
 def chronos_context(rows,origin)->tuple[np.ndarray,np.ndarray,int,datetime]:
@@ -171,19 +176,15 @@ def _columns(levels,wanted):
     return [levels.index(x) for x in wanted]
 
 
-def _decision_summary(rows,policies):
-    """evaluation.decision_summary() over the given policies; the shipped function is fixed to evaluation.POLICIES."""
-    total={k:math.fsum(r[k+"_cost"] for r in rows) for k in policies}
-    achievable=total["no_battery"]-total["perfect_foresight"]
-    out={}
-    for k in policies:
-        daily=[r[k+"_cost"] for r in rows]
-        out[k]={"total_cost":total[k],"regret_vs_perfect_foresight":total[k]-total["perfect_foresight"],
-                "battery_value":total["no_battery"]-total[k],
-                "share_of_achievable_battery_value":(total["no_battery"]-total[k])/achievable if achievable>0 else None,
-                "worst_day_cost":max(daily),"mean_worst_10pct_days":tail_mean(daily),
-                "verified_feasible_plans":sum(r[k+"_status"]=="VERIFIED_FEASIBLE" for r in rows)}
-    return out
+def _decision_summary(rows,policies=POLICIES_HF):
+    """evaluation.decision_summary() for each policy. The shipped function covers evaluation.POLICIES only, so a
+    Chronos policy is summarised by it in the place of the policy it is planned as, with its own costs and statuses."""
+    shipped=decision_summary(rows)
+    def summary(k):
+        if k not in PLANNED_AS:return shipped[k]
+        a=PLANNED_AS[k]
+        return decision_summary([{**r,a+"_cost":r[k+"_cost"],a+"_status":r[k+"_status"]} for r in rows])[a]
+    return {k:summary(k) for k in policies}
 
 
 def rasid_hf(forecaster:Forecaster,*,days=60)->dict:
@@ -255,6 +256,6 @@ def rasid_gate(result:dict,shipped:dict)->dict:
         pairs+=[(f"decision_quality.{k}.total_cost",g.get("total_cost",_MISSING),w.get("total_cost",_MISSING),cost),
                 (f"decision_quality.{k}.verified_feasible_plans",g.get("verified_feasible_plans",_MISSING),
                  w.get("verified_feasible_plans",_MISSING))]
-    origins=_row_pairs("origins","date",result.get("origins",[]),shipped["origins"],("date","ridge_mae","naive_mae","coverage_80_load"))
-    pairs+=[(n,g,w,mae) if n.endswith("_mae") else (n,g,w) for n,g,w in origins]
+    pairs+=_row_pairs("origins","date",result.get("origins",[]),shipped["origins"],
+                      ("date","ridge_mae","naive_mae","coverage_80_load"),{"ridge_mae":mae,"naive_mae":mae})
     return _compare(pairs)
