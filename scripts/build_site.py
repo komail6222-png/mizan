@@ -13,8 +13,9 @@ Before writing anything, the script refuses to build unless:
   1. every signed result in reports/demo/demo_results.json verifies against the pinned key;
   2. the exhibit and the three Spaces are exactly the pages that scripts/build_exhibit.py and
      scripts/build_spaces.py generate from that signed packet;
-  3. every number on the introduction is read from reports/ (a missing value stops the build), and the
-     wording "resolved" / "not resolved" matches the sign of the reported 95% intervals;
+  3. every number on the introduction is read from reports/ (a missing value stops the build), the
+     wording "resolved" / "not resolved" matches the sign of the reported 95% intervals, and every comparison
+     the Foundation models block states in words still holds in reports/hf/;
   4. no page loads a script, stylesheet, font or image from another origin.
 Exhibit pages are copied byte for byte. The introduction embeds the same signed packet and the exhibit's own
 verification code, copied from mizan/web/template.html.
@@ -89,6 +90,74 @@ def group(n):
     return f"{n:,}"
 
 
+def signed(v, places=2):
+    return ("+" if v >= 0 else "−") + f"{abs(v):.{places}f}"
+
+
+def percent(v):
+    return str((Decimal(str(v)) * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)) + "%"
+
+
+def hf_facts(basira, rasid, sanad):
+    """The Foundation models block, read from reports/hf/: each model's figure next to the current component's.
+
+    The block's fixed wording is checked against the files here; a statement that no longer holds stops the build."""
+    for name, r in (("basira", basira), ("rasid", rasid), ("sanad", sanad)):
+        if not (r["gate"]["passed"] and r["repeat_run"]["identical"] and r["fixture_only"]):
+            fail(f"reports/hf/{name}.json: the block says every gate passed, every run repeated identically and all data is generated")
+    # BASIRA: the frozen test, then the repeated-calibration study the block calls "roughly equal" within its stated precision.
+    side = {k: basira[k]["frozen_test"] for k in ("baseline", "model")}
+    intact = {k: sum(row["condition"] == "intact" for row in t["rows"]) for k, t in side.items()}
+    if side["model"]["detected"] != side["baseline"]["detected"] or intact["model"] != intact["baseline"]:
+        fail("BASIRA: the block says both sides detect the same defects on the same frozen items")
+    study = [basira[k]["calibration_study"]["rows"] for k in ("baseline", "model")]
+    gap = max(abs(x["marginal_mean_false_alert"] - y["marginal_mean_false_alert"]) for x, y in zip(*study)) * 100
+    precision = float(re.search(r"±([0-9.]+) percentage points", basira["baseline"]["calibration_study"]["scope"]).group(1))
+    if not gap <= precision:
+        fail("BASIRA: the study's mean false-alert rates are no longer within its stated precision; the block calls them roughly equal")
+    # RASID: lower load error, worse uncertainty ranges, and the forecast value with its interval.
+    fb, fm = rasid["baseline"]["forecast"], rasid["model"]["forecast"]
+    target = fm["shared_levels"][-1] - fm["shared_levels"][0]
+    if not fm["chronos_mae_kw"] < fb["ridge_mae_kw"]:
+        fail("RASID: Chronos no longer has the lower load error the block states")
+    if not (fm["chronos_mean_pinball"] > fb["ridge_mean_pinball"] and fm["chronos_truncated_crps"] > fb["ridge_truncated_crps"]
+            and abs(fm["chronos_coverage_80_load"] - target) > abs(fb["ridge_coverage_80_load"] - target)):
+        fail("RASID: the block says Chronos's uncertainty ranges score worse (pinball, CRPS and coverage)")
+    pairs = {(p["policy"], p["reference"]): p for p in rasid["model"]["paired_comparisons"]}
+    if not pairs[("chronos", "candidate")]["mean_daily_difference_95ci"][0] > 0:
+        fail("RASID: the block says the risk-weighted Chronos plan costs more than the ridge one, a resolved difference")
+    value = pairs[("chronos_risk_neutral", "candidate_risk_neutral")]
+    lo, hi = value["mean_daily_difference_95ci"]
+    resolved = lo > 0 or hi < 0
+    # SANAD: E5 behind on the engine's bilingual query (the ceiling), ahead with either label alone.
+    r1 = {k: {kind: sanad[k]["metrics"][kind]["all"]["recall_at_1"] for kind in ("bilingual", "en", "ar")} for k in ("baseline", "model")}
+    if not (r1["model"]["bilingual"] < r1["baseline"]["bilingual"] and r1["model"]["en"] > r1["baseline"]["en"] and r1["model"]["ar"] > r1["baseline"]["ar"]):
+        fail("SANAD: the block says E5 ranks the claim line first less often with the bilingual query and more often with each label alone")
+    return {
+        "hf_basira_false": str(side["model"]["false_alerts"]),
+        "hf_basira_false_base": str(side["baseline"]["false_alerts"]),
+        "hf_basira_intact": str(intact["model"]),
+        "hf_basira_detected": str(side["model"]["detected"]),
+        "hf_basira_defects": str(side["model"]["test_items"] - intact["model"]),
+        "hf_basira_m": str(side["model"]["calibration_m"]),
+        "hf_basira_draws": group(basira["settings"]["draws"]),
+        "hf_rasid_mae": f"{fm['chronos_mae_kw']:.3f}",
+        "hf_rasid_mae_ridge": f"{fb['ridge_mae_kw']:.3f}",
+        "hf_rasid_days": str(rasid["model"]["target_days"]),
+        "hf_rasid_value": signed(value["mean_daily_difference"], 3),
+        "hf_rasid_lo": signed(lo, 3),
+        "hf_rasid_hi": signed(hi, 3),
+        "hf_rasid_phrase_en": "resolved" if resolved else "not resolved",
+        "hf_rasid_phrase_ar": "مؤكد" if resolved else "غير مؤكد",
+        "hf_sanad_lexical_r1": percent(r1["baseline"]["bilingual"]),
+        "hf_sanad_e5_r1": percent(r1["model"]["bilingual"]),
+        "hf_sanad_lexical_r1_en": percent(r1["baseline"]["en"]),
+        "hf_sanad_e5_r1_en": percent(r1["model"]["en"]),
+        "hf_sanad_lexical_r1_ar": percent(r1["baseline"]["ar"]),
+        "hf_sanad_e5_r1_ar": percent(r1["model"]["ar"]),
+    }
+
+
 def facts(packet):
     """Every figure the introduction states, read from reports/. Missing keys raise KeyError and stop the build."""
     sanad = load("reports/evaluation/sanad.json")
@@ -111,7 +180,6 @@ def facts(packet):
         fail("the forecast-value interval no longer includes zero; the introduction calls it not resolved")
     far = Decimal(str(basira["calibration_study"]["shipped_calibration"]["long_run_false_alert_estimate"])) * 100
     passed, total = (int(x) for x in safety["rasid_invalid_mutations_rejected"].split("/"))
-    signed = lambda v: ("+" if v >= 0 else "−") + f"{abs(v):.2f}"  # noqa: E731
     return {
         "receipts": str(len(packet["run"]["receipts"])),
         "sanad_false": str(sum(s["false_meets"] for s in suites)),
@@ -128,6 +196,7 @@ def facts(packet):
         "mae_naive": f"{rasid['seasonal_naive_mae_kw']:.3f}",
         "premium": signed(premium["total_difference"]),
         "forecast_value": signed(forecast["total_difference"]),
+        **hf_facts(*(load(f"reports/hf/{k}.json") for k in ("basira", "rasid", "sanad"))),
     }
 
 

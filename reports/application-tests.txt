@@ -1,10 +1,15 @@
-# Release 3.0 application tests — local verification run (21 November 2026)
+# Release 3.1 application tests (unreleased) — local run (25 November 2026)
 # Python 3.12.16 (uv) · SQLite 3.53.1 · NumPy 2.3.5 · SciPy 1.17.0 · FastAPI 0.141.1 · httpx 0.28.1 · PyMuPDF 1.26.6
 # Ubuntu 26.04.1 LTS under WSL2 (kernel 6.18.58.1) on Windows 11, Intel Core i7-13645HX, x86_64
-# All dependencies from requirements.txt were installed: the 2 HTTP tests executed and passed (no skips).
+# Main environment (.venv, every dependency in requirements.txt, no torch): 159 tests, 155 passed, 4 skipped.
+# The 4 skips are the Hugging Face loader tests (tests/test_hf_models.py LoaderTests), which need torch, transformers,
+# chronos-forecasting and MIZAN_HF_MODELS. They were run in the optional .venv-hf (requirements-hf.txt: torch 2.15.0+cpu,
+# transformers 4.57.6, chronos-forecasting 2.3.2) against the verified checkpoints:
+#   MIZAN_HF_MODELS=var/hf .venv-hf/bin/python -m unittest tests.test_hf_models.LoaderTests -v
+#   -> 4 tests in 1.654s, OK: test_chronos_quantiles, test_dinov2_grid, test_e5_normalised, test_identity_matches_pin.
+# The same suite on Python 3.13.18 (uv, SQLite 3.53.1, the same pins): 159 tests in 38.394s, OK (skipped=4, the same 4).
 # MCP conformance used the official mcp client 2.3.0.
-# Previous record (release build environment, Python 3.13.18, no network): 102 tests, 100 passed, 2 HTTP tests skipped.
-# Full context: reports/local-verification.md
+# Previous record (3.0 local verification run, 21 November 2026): 102 tests, all passed; see reports/local-verification.md.
 # Command: python -m unittest discover -s tests -v
 
 test_agents_only_see_their_own_jobs (test_agent.AgentBoundaryTests.test_agents_only_see_their_own_jobs) ... ok
@@ -40,6 +45,7 @@ test_every_policy_is_solved_verified_and_summarized (test_evaluation.DecisionQua
 test_paired_comparison_interval_brackets_its_estimate (test_evaluation.DecisionQualityTests.test_paired_comparison_interval_brackets_its_estimate) ... ok
 test_tail_mean_uses_the_worst_share (test_evaluation.DecisionQualityTests.test_tail_mean_uses_the_worst_share) ... ok
 test_report_embeds_only_summary_data_and_escapes_markup (test_evaluation.ReportPageTests.test_report_embeds_only_summary_data_and_escapes_markup) ... ok
+test_report_summarizes_the_hugging_face_evaluation (test_evaluation.ReportPageTests.test_report_summarizes_the_hugging_face_evaluation) ... ok
 test_acknowledgement_and_transcript_counterfactuals (test_explain.SanadExplanationTests.test_acknowledgement_and_transcript_counterfactuals) ... ok
 test_counterfactuals_reproduce_when_rerun_independently (test_explain.SanadExplanationTests.test_counterfactuals_reproduce_when_rerun_independently) ... ok
 test_every_quoted_phrase_exists_verbatim_in_the_documents (test_explain.SanadExplanationTests.test_every_quoted_phrase_exists_verbatim_in_the_documents) ... ok
@@ -48,6 +54,58 @@ test_without_documents_only_the_explanation_is_given (test_explain.SanadExplanat
 test_basira_counterfactuals_follow_the_decision_rule (test_explain.VisionAndEnergyExplanationTests.test_basira_counterfactuals_follow_the_decision_rule) ... ok
 test_cli_explains_a_verified_output_with_counterfactuals_from_the_store (test_explain.VisionAndEnergyExplanationTests.test_cli_explains_a_verified_output_with_counterfactuals_from_the_store) ... ok
 test_rasid_counterfactuals_are_resolved_and_reverified (test_explain.VisionAndEnergyExplanationTests.test_rasid_counterfactuals_are_resolved_and_reverified) ... ok
+test_descriptor_reproduces_shipped_frozen_test (test_hf_evaluation.BasiraHarnessTests.test_descriptor_reproduces_shipped_frozen_test) ... ok
+test_every_scored_image_goes_through_the_given_feature_function (test_hf_evaluation.BasiraHarnessTests.test_every_scored_image_goes_through_the_given_feature_function) ... ok
+test_gate_fails_when_two_frozen_items_swap_flags (test_hf_evaluation.BasiraHarnessTests.test_gate_fails_when_two_frozen_items_swap_flags) ... ok
+test_gate_passes_the_shipped_values_and_names_every_check (test_hf_evaluation.BasiraHarnessTests.test_gate_passes_the_shipped_values_and_names_every_check) ... ok
+test_gate_reports_each_mismatch (test_hf_evaluation.BasiraHarnessTests.test_gate_reports_each_mismatch) ... ok
+test_harness_mirrors_the_shipped_functions_item_for_item (test_hf_evaluation.BasiraHarnessTests.test_harness_mirrors_the_shipped_functions_item_for_item) ... ok
+test_a_failed_gate_stops_before_the_model_loads_and_names_the_mismatch (test_hf_evaluation.EvaluateScriptTests.test_a_failed_gate_stops_before_the_model_loads_and_names_the_mismatch) ... ok
+test_differences_cover_absent_values_and_list_lengths (test_hf_evaluation.EvaluateScriptTests.test_differences_cover_absent_values_and_list_lengths) ... ok
+test_failed_gate_writes_nothing (test_hf_evaluation.EvaluateScriptTests.test_failed_gate_writes_nothing) ... ok
+test_main_exits_0_after_writing_and_prints_the_summary (test_hf_evaluation.EvaluateScriptTests.test_main_exits_0_after_writing_and_prints_the_summary) ... ok
+test_main_exits_2_when_a_gate_fails (test_hf_evaluation.EvaluateScriptTests.test_main_exits_2_when_a_gate_fails) ... ok
+test_main_requires_out (test_hf_evaluation.EvaluateScriptTests.test_main_requires_out) ... ok
+test_main_returns_1_for_the_evidence_directory_without_repeat (test_hf_evaluation.EvaluateScriptTests.test_main_returns_1_for_the_evidence_directory_without_repeat) ... ok
+test_main_returns_1_when_the_run_is_refused (test_hf_evaluation.EvaluateScriptTests.test_main_returns_1_when_the_run_is_refused) ... ok
+test_nothing_is_written_until_every_requested_gate_passes (test_hf_evaluation.EvaluateScriptTests.test_nothing_is_written_until_every_requested_gate_passes) ... ok
+test_quick_mode_runs_every_system_at_reduced_size_and_never_writes (test_hf_evaluation.EvaluateScriptTests.test_quick_mode_runs_every_system_at_reduced_size_and_never_writes) ... ok
+test_rasid_views_split_one_run_without_losing_a_field (test_hf_evaluation.EvaluateScriptTests.test_rasid_views_split_one_run_without_losing_a_field) ... ok
+test_repeat_keeps_the_first_result_and_names_every_difference (test_hf_evaluation.EvaluateScriptTests.test_repeat_keeps_the_first_result_and_names_every_difference) ... ok
+test_repeat_records_an_identical_second_run (test_hf_evaluation.EvaluateScriptTests.test_repeat_records_an_identical_second_run) ... ok
+test_sanad_results_are_written_only_at_the_protocol_size (test_hf_evaluation.EvaluateScriptTests.test_sanad_results_are_written_only_at_the_protocol_size) ... ok
+test_sanad_views_hold_the_lexical_and_e5_halves_of_one_run (test_hf_evaluation.EvaluateScriptTests.test_sanad_views_hold_the_lexical_and_e5_halves_of_one_run) ... ok
+test_the_evidence_directory_is_written_only_with_repeat (test_hf_evaluation.EvaluateScriptTests.test_the_evidence_directory_is_written_only_with_repeat) ... ok
+test_writes_every_record_once_all_gates_pass (test_hf_evaluation.EvaluateScriptTests.test_writes_every_record_once_all_gates_pass) ... ok
+test_chronos_policies_get_the_paired_sorted_clipped_scenarios (test_hf_evaluation.RasidHarnessTests.test_chronos_policies_get_the_paired_sorted_clipped_scenarios) ... ok
+test_context_is_the_vintage_run_ending_the_hour_before_the_origin (test_hf_evaluation.RasidHarnessTests.test_context_is_the_vintage_run_ending_the_hour_before_the_origin) ... ok
+test_context_stops_before_origin_and_at_a_gap (test_hf_evaluation.RasidHarnessTests.test_context_stops_before_origin_and_at_a_gap) ... ok
+test_each_policy_carries_its_own_state_and_peak (test_hf_evaluation.RasidHarnessTests.test_each_policy_carries_its_own_state_and_peak) ... ok
+test_gate_names_every_check_and_applies_each_tolerance (test_hf_evaluation.RasidHarnessTests.test_gate_names_every_check_and_applies_each_tolerance) ... ok
+test_gate_tolerance (test_hf_evaluation.RasidHarnessTests.test_gate_tolerance) ... ok
+test_harness_feeds_only_the_vintage_and_mirrors_the_shipped_ridge_rows (test_hf_evaluation.RasidHarnessTests.test_harness_feeds_only_the_vintage_and_mirrors_the_shipped_ridge_rows) ... ok
+test_mirror_equals_the_shipped_function_in_this_environment (test_hf_evaluation.RasidHarnessTests.test_mirror_equals_the_shipped_function_in_this_environment) ... ok
+test_refuses_a_misaligned_context_and_a_malformed_forecast (test_hf_evaluation.RasidHarnessTests.test_refuses_a_misaligned_context_and_a_malformed_forecast) ... ok
+test_seven_policy_summary_matches_the_shipped_one (test_hf_evaluation.RasidHarnessTests.test_seven_policy_summary_matches_the_shipped_one) ... ok
+test_two_days_shapes_and_sorted_quantiles (test_hf_evaluation.RasidHarnessTests.test_two_days_shapes_and_sorted_quantiles) ... ok
+test_gate_fails_on_another_set_or_another_lexical_ranker (test_hf_evaluation.SanadHarnessTests.test_gate_fails_on_another_set_or_another_lexical_ranker) ... ok
+test_gate_fails_when_a_lexical_metric_differs (test_hf_evaluation.SanadHarnessTests.test_gate_fails_when_a_lexical_metric_differs) ... ok
+test_gate_passes_two_runs_whatever_the_embedder_and_names_every_check (test_hf_evaluation.SanadHarnessTests.test_gate_passes_two_runs_whatever_the_embedder_and_names_every_check) ... ok
+test_generator_stops_when_a_distractor_is_a_claim (test_hf_evaluation.SanadHarnessTests.test_generator_stops_when_a_distractor_is_a_claim) ... ok
+test_gold_is_defined_by_the_grammar (test_hf_evaluation.SanadHarnessTests.test_gold_is_defined_by_the_grammar) ... ok
+test_lexical_ranking_is_the_engines_retrieve_over_every_line (test_hf_evaluation.SanadHarnessTests.test_lexical_ranking_is_the_engines_retrieve_over_every_line) ... ok
+test_metrics_follow_their_definitions_with_ties_in_document_order (test_hf_evaluation.SanadHarnessTests.test_metrics_follow_their_definitions_with_ties_in_document_order) ... ok
+test_one_embedding_call_per_document_and_one_for_the_queries (test_hf_evaluation.SanadHarnessTests.test_one_embedding_call_per_document_and_one_for_the_queries) ... ok
+test_oracle_embedder_scores_one_and_lexical_is_bounded (test_hf_evaluation.SanadHarnessTests.test_oracle_embedder_scores_one_and_lexical_is_bounded) ... ok
+test_oracle_is_perfect_for_every_query_kind_and_language (test_hf_evaluation.SanadHarnessTests.test_oracle_is_perfect_for_every_query_kind_and_language) ... ok
+test_refuses_malformed_embeddings (test_hf_evaluation.SanadHarnessTests.test_refuses_malformed_embeddings) ... ok
+test_set_layout_one_gold_line_per_attribute_and_fixed_distractors (test_hf_evaluation.SanadHarnessTests.test_set_layout_one_gold_line_per_attribute_and_fixed_distractors) ... ok
+test_identity_separates_the_signed_import_from_the_reproducible_manifest (test_hf_models.CheckpointVerificationTests.test_identity_separates_the_signed_import_from_the_reproducible_manifest) ... ok
+test_loaders_and_identity_refuse_a_checkpoint_that_was_never_imported (test_hf_models.CheckpointVerificationTests.test_loaders_and_identity_refuse_a_checkpoint_that_was_never_imported) ... ok
+test_chronos_quantiles (test_hf_models.LoaderTests.test_chronos_quantiles) ... skipped 'optional HF runtime'
+test_dinov2_grid (test_hf_models.LoaderTests.test_dinov2_grid) ... skipped 'optional HF runtime'
+test_e5_normalised (test_hf_models.LoaderTests.test_e5_normalised) ... skipped 'optional HF runtime'
+test_identity_matches_pin (test_hf_models.LoaderTests.test_identity_matches_pin) ... skipped 'optional HF runtime'
 test_changed_offline_companion_and_rewritten_manifest (test_import_security.ImportSecurityTests.test_changed_offline_companion_and_rewritten_manifest) ... ok
 test_constraint_mutations_and_stale_gap (test_products.EnergyTests.test_constraint_mutations_and_stale_gap) ... ok
 test_fractional_tail_negative_costs_and_bad_beta (test_products.EnergyTests.test_fractional_tail_negative_costs_and_bad_beta) ... ok
@@ -101,6 +159,10 @@ test_supported_arabic_typography_and_units (test_sanad_v2.ArabicCoverageTests.te
 test_acknowledge_title_then_run_and_verify (test_sanad_v2.OperatorCliTests.test_acknowledge_title_then_run_and_verify) ... ok
 test_previous_grammar_is_refused_with_an_actionable_code (test_sanad_v2.ProfileUpgradeTests.test_previous_grammar_is_refused_with_an_actionable_code) ... ok
 test_upgrade_preserves_approvals_and_is_idempotent (test_sanad_v2.ProfileUpgradeTests.test_upgrade_preserves_approvals_and_is_idempotent) ... ok
+test_facts_read_each_model_next_to_the_current_component (test_site.FoundationModelFactsTests.test_facts_read_each_model_next_to_the_current_component) ... ok
+test_landing_shows_the_block_with_both_sides_in_both_languages (test_site.FoundationModelFactsTests.test_landing_shows_the_block_with_both_sides_in_both_languages) ... ok
+test_rasid_phrase_follows_the_sign_of_the_interval (test_site.FoundationModelFactsTests.test_rasid_phrase_follows_the_sign_of_the_interval) ... ok
+test_wording_that_no_longer_matches_the_evidence_stops_the_build (test_site.FoundationModelFactsTests.test_wording_that_no_longer_matches_the_evidence_stops_the_build) ... ok
 test_init_anchor_and_audit (test_witness.WitnessCliTests.test_init_anchor_and_audit) ... ok
 test_anchor_report_tail_and_reanchor (test_witness.WitnessTests.test_anchor_report_tail_and_reanchor) ... ok
 test_offline_receipts_and_domain_separation (test_witness.WitnessTests.test_offline_receipts_and_domain_separation) ... ok
@@ -111,6 +173,6 @@ test_rewritten_local_history_is_detected (test_witness.WitnessTests.test_rewritt
 test_witness_refuses_malformed_forked_and_foreign_batches (test_witness.WitnessTests.test_witness_refuses_malformed_forked_and_foreign_batches) ... ok
 
 ----------------------------------------------------------------------
-Ran 102 tests in 20.903s
+Ran 159 tests in 35.661s
 
-OK
+OK (skipped=4)

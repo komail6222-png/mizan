@@ -15,7 +15,7 @@ mizan doctor                      # reports SQLite; follow the README section if
 ## Commands
 
 ```bash
-python -m unittest discover -s tests -v                       # 102 tests
+python -m unittest discover -s tests -v                       # 159 tests (4 HF loader tests skip without torch)
 python -m mizan run sanad examples/sanad.json --out /tmp/sanad.json
 python -m mizan verify /tmp/sanad.json
 python -m mizan explain /tmp/sanad.json --lang ar
@@ -24,6 +24,7 @@ python scripts/safety_suite.py --quick --out /tmp/safety.json  # default --out o
 node scripts/check_exhibit_logic.mjs
 python scripts/check_exhibits.py --chromium PATH --out /tmp/browser.json
 python scripts/build_site.py                                   # GitHub Pages site into _site/
+python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat  # in .venv-hf only; rewrites the published HF evidence
 ```
 
 ## Layout

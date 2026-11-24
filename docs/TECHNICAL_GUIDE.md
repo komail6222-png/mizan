@@ -129,7 +129,7 @@ Real transcripts usually contain titles, revision lines or page footers. Under g
 
 `spaces/sanad/`, `spaces/basira/` and `spaces/rasid/` each contain an independently usable static Space repository. Each has its own README, index, data and receipts. Upload the *contents of the selected Space folder* if you choose to publish that exhibit. Recorded exhibits contain generated samples. User files, tokens, model caches and signing keys stay in the private local runtime directory. [Static Spaces documentation](https://huggingface.co/docs/hub/spaces-sdks-static)
 
-Three optional model experiments are present in `mizan/models.py`. They import a fixed revision, verify weights and companion files, sign the local import manifest, and verify it again before offline use. The signer's trust directory must be controlled by the operator. The optional experiments require new downloads and their own dependency resolution. None of the reported benchmark numbers used these checkpoints. Run in a separate environment if you choose to compare them.
+Three optional model experiments are present in `mizan/models.py`. They import a fixed revision, verify weights and companion files, sign the local import manifest, and verify it again before offline use. The signer's trust directory must be controlled by the operator. The optional experiments require new downloads and their own dependency resolution. The 3.0 benchmark numbers did not use these checkpoints; `reports/hf/` compares each of them with the current component on the held-out protocol (`docs/RELEASE_3.1.md`). Run in a separate environment if you choose to compare them.
 
 ```bash
 python -m pip install -r requirements-hf.txt
@@ -139,6 +139,8 @@ python -m mizan hf compare sanad
 ```
 
 Substitute `basira` for DINOv2 or `rasid` for Chronos-Bolt. The local control plane, strict parser, calibrated detector and MILP operate independently of those experiments.
+
+With all three imported into `var/hf`, `python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat` reproduces the published comparison (in the optional environment, with `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`; BASIRA took 869 s per run on the recorded CPU, and `--repeat` runs each system twice). `--out` is required, and `reports/hf` is written only with `--repeat`; write anywhere else to experiment.
 
 ## Recovery and qualification
 

@@ -63,16 +63,17 @@ Every number below comes from a file in [`reports/`](reports/). All inputs are g
 
 | Claim | Result | Source |
 |---|---|---|
-| Application tests | 102/102 passed, on Python 3.12 and 3.13 | [`reports/application-tests.txt`](reports/application-tests.txt), [`reports/local-verification.md`](reports/local-verification.md) |
+| Application tests | 159/159 passed. On Python 3.12 and 3.13, 155 ran and the 4 model-loader tests skipped without torch; those 4 passed in the optional Hugging Face environment against the verified checkpoints | [`reports/application-tests.txt`](reports/application-tests.txt) |
 | SANAD never approves wrongly on its test sets | 36/36 original cases, 16/16 grammar-2 cases (Arabic typography and units, acknowledged and forged context), 16/16 multi-model tables; **0 false MEETS**. Baselines: numeric-only rule 24/36; first-number table reader 2/16 with 2 false MEETS | [`reports/evaluation/sanad.json`](reports/evaluation/sanad.json) |
 | BASIRA detects defects and is honest about false alerts | 40/40 generated defects flagged, 8/40 intact parts flagged (pixel baseline: 3/40 and 1/40). The shipped bank's long-run false-alert rate is about 12.9%; the optional PAC rule keeps banks above 5% to 4.3% (m = 50) and 1.5% (m = 100) | [`reports/evaluation/basira.json`](reports/evaluation/basira.json) |
 | RASID separates forecast value from risk aversion | Forecast error 2.794 vs 3.068 kW. Price of risk aversion +58.05 (95% interval excludes zero); the forecast's economic value, −18.38, is not resolved by 60 days. 300/300 plans passed the independent verifier | [`reports/evaluation/rasid.json`](reports/evaluation/rasid.json) |
+| Pinned Hugging Face models, measured against the current components (3.1, unreleased) | Each model frozen in place of one component, on the same held-out data, after the current component reproduced its shipped results in the same harness. **BASIRA, DINOv2-small:** 1/40 false alerts against 8/40, 40/40 defects for both; over 400 calibration banks per size the mean false-alert rates are roughly equal. **RASID, Chronos-Bolt-tiny:** load MAE 2.572 vs 2.794 kW, but worse pinball loss, CRPS and 80% coverage; with the same risk-neutral planner −0.135 per day (95% interval −0.507 to +0.154), not resolved; risk-weighted +1.060 per day, costlier (interval excludes zero). **SANAD, multilingual-E5-small:** recall@1 80.5% vs 96.9% with the engine's bilingual query, which is exactly the labels the grammar accepts (near the lexical ceiling); 77.7% vs 61.1% with the English label alone, 72.5% vs 60.2% with the Arabic label alone. The deployed engines are unchanged | [`reports/hf/`](reports/hf/) |
 | The coordinator is safe under crashes | 40,000 deterministic-simulation steps on the real broker, 0 violations; 2/2 deliberately broken fences caught | [`reports/safety/safety.json`](reports/safety/safety.json) |
 | The tests have teeth | 4,653 SANAD relation checks (4/4 broken engines caught), 9,000 BASIRA property checks, 1,600/1,600 invalid battery plans rejected; 0 violations | [`reports/safety/safety.json`](reports/safety/safety.json) |
 | The exhibit verifies itself | 7/7 signed results verified in Chrome at 1280 px and 390 px, tampered copy rejected, 0 external requests | [`reports/browser-checks.json`](reports/browser-checks.json) |
 | Reproducible on another machine | SANAD and BASIRA identical; RASID within 0.002% (different equally optimal solver schedule), same conclusions; HTTP API, PDF import and MCP exercised | [`reports/local-verification.md`](reports/local-verification.md) |
 
-Release notes with the full evidence: [`docs/RELEASE_3.0.md`](docs/RELEASE_3.0.md). Acceptance map and open gates: [`docs/QUALIFICATION.md`](docs/QUALIFICATION.md).
+Release notes with the full evidence: [`docs/RELEASE_3.0.md`](docs/RELEASE_3.0.md), and for the Hugging Face evaluation [`docs/RELEASE_3.1.md`](docs/RELEASE_3.1.md) (unreleased). Acceptance map and open gates: [`docs/QUALIFICATION.md`](docs/QUALIFICATION.md).
 
 ## Limitations
 
@@ -88,7 +89,7 @@ MIZAN was built with AI coding agents. My role was direction, review and verific
 
 ## Documentation
 
-[Technical guide](docs/TECHNICAL_GUIDE.md) · [Release 3.0](docs/RELEASE_3.0.md) · [Qualification record](docs/QUALIFICATION.md) · [Local verification](reports/local-verification.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Design history](docs/design/) · [Arabic guide](START_HERE_AR.md)
+[Technical guide](docs/TECHNICAL_GUIDE.md) · [Release 3.0](docs/RELEASE_3.0.md) · [Release 3.1 (unreleased)](docs/RELEASE_3.1.md) · [Qualification record](docs/QUALIFICATION.md) · [Local verification](reports/local-verification.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Design history](docs/design/) · [Arabic guide](START_HERE_AR.md)
 
 ## License and citation
 

@@ -1,16 +1,23 @@
 # Changelog
 
-All notable changes to MIZAN. Detailed notes and evidence for each release are in `docs/`. Every release so far is dated 21 November 2026.
+All notable changes to MIZAN. Detailed notes and evidence for each release are in `docs/`. Every release so far is dated 21 November 2026; 3.1.0 is not released yet.
 
-## [Unreleased]
+## [3.1.0] (unreleased)
+
+Foundation models measured on the held-out protocol, and the redesigned interface. Details: [`docs/RELEASE_3.1.md`](docs/RELEASE_3.1.md). The version strings, tag and release follow when publication is approved.
+
+### Added
+- **Hugging Face evaluation** (`scripts/evaluate_hf.py`, `mizan/hf_evaluation.py`, results in `reports/hf/`). DINOv2-small, Chronos-Bolt-tiny and multilingual-E5-small each replace one component, frozen, on the same held-out items, origins and metrics. A fidelity gate first re-runs the current component in the new harness (368, 253 and 30 checks, 0 mismatches), and each system was evaluated twice with identical results. BASIRA: 1/40 false alerts against 8/40 on the frozen test, 40/40 defects for both; over 400 calibration banks per size the mean false-alert rates are roughly equal. RASID: load MAE 2.572 against 2.794 kW, with worse pinball loss, CRPS and 80% coverage; with the same risk-neutral planner −0.135 per day (95% interval −0.507 to +0.154, not resolved); the risk-weighted Chronos policy costs 1.060 more per day than the ridge one (interval excludes zero). SANAD: recall@1 80.5% against 96.9% with the engine's bilingual query, where the lexical retriever is near its ceiling; 77.7% against 61.1% with the English label alone and 72.5% against 60.2% with the Arabic label alone. The deployed engines are unchanged.
+- Verified loaders for the three pinned checkpoints (`mizan/models.py`), which refuse an unverified import. The optional runtime is pinned in `requirements-hf.txt` (CPU-only torch) and stays out of `requirements.txt` and CI.
+- The evaluation report gains a "Foundation models from Hugging Face" section, and the introduction a bilingual "Foundation models, measured honestly" block whose figures are read from `reports/hf/` and whose wording `scripts/build_site.py` checks against them before building.
+- **Bilingual introduction at the site root** (`site/landing.html`). A balance weighs the seven signed results while the browser recomputes each signature, and tips when one digit is changed. English and Arabic with right-to-left layout. Every figure on it is read from `reports/` by `scripts/build_site.py`, which also refuses to build if the wording about resolved and unresolved results no longer matches the reported intervals. The exhibit moved to `/exhibit/`.
+- `scripts/check_exhibits.py --site` checks the introduction in Chromium (verification, tamper and restore, Arabic RTL, no overflow, zero external requests); the Pages workflow runs it before every deploy.
+- Tests: `test_hf_models.py`, `test_hf_evaluation.py`, `test_site.py` (159 tests in total).
 
 ### Changed
 - **Redesigned interface.** A new visual identity for the exhibit, the three Spaces and the local `mizan serve` page: an instrument-like layout, an embedded Readex Pro typeface (Arabic and Latin), and interactions built from data the old page did not show: an image wipe and per-patch readout for BASIRA, the calibration bank drawn against the alert threshold, linked hour-by-hour forecast and battery charts, the verifier's eleven constraint groups and the scenario costs for RASID. The signed data and the in-page verification code are unchanged; the pages were rebuilt from the same packet and still verify against the pinned key.
-
-### Added
-- **Bilingual introduction at the site root** (`site/landing.html`). A balance weighs the seven signed results while the browser recomputes each signature, and tips when one digit is changed. English and Arabic with right-to-left layout. Every figure on it is read from `reports/` by `scripts/build_site.py`, which also refuses to build if the wording about resolved and unresolved results no longer matches the reported intervals. The exhibit moved to `/exhibit/`.
-- The evaluation report (`scripts/build_report.py`) uses the same identity, with a Latin-only typeface subset so the page stays under its 60,000-character budget; its figures are unchanged. Text colours meet WCAG AA contrast on every page, checked against the rendered pages.
-- `scripts/check_exhibits.py --site` checks the introduction in Chromium (verification, tamper and restore, Arabic RTL, no overflow, zero external requests); the Pages workflow runs it before every deploy.
+- The evaluation report (`scripts/build_report.py`) uses the same identity, with a Latin-only typeface subset so the page stays under its 60,000-character budget; its 3.0 figures are unchanged. Text colours meet WCAG AA contrast on every page, checked against the rendered pages.
+- `docs/TECHNICAL_GUIDE.md` no longer says that no reported number used the pinned checkpoints, and shows how `reports/hf/` is produced.
 
 ## [3.0.0] - 2026-11-21
 
