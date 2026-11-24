@@ -64,26 +64,37 @@ class ReportPageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             page = Path(build(root / "reports/evaluation", Path(d) / "index.html")).read_text(encoding="utf-8")
             self.assertNotIn("hf", summarize(root / "reports/evaluation", hf_source=Path(d) / "missing"))
+            # Like safety/, the HF evidence is the source folder's sibling: another source never borrows the repo's own.
+            (Path(d) / "evaluation").mkdir()
+            for k in ("sanad", "basira", "rasid"):
+                (Path(d) / f"evaluation/{k}.json").write_bytes((root / f"reports/evaluation/{k}.json").read_bytes())
+            self.assertNotIn("hf", summarize(Path(d) / "evaluation"))
         self.assertIn("Foundation models from Hugging Face", page)
-        self.assertIsNone(re.search("[֐-ࣿיִ-﷿ﹰ-﻿]", page), "the report page is Latin-only")
+        self.assertIsNone(re.search("[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]", page), "the report page is Latin-only")
         self.assertLess(len(page), 60000, "the page carries summaries, not fixtures")
         hf = json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', page, re.S).group(1))["hf"]
         # The figures are the files' own values.
         b, r, s = source["basira"], source["rasid"], source["sanad"]
         self.assertEqual(hf["basira"]["model"]["frozen_test"]["detected"], b["model"]["frozen_test"]["detected"])
         self.assertEqual(hf["basira"]["baseline"]["frozen_test"]["false_alerts"], b["baseline"]["frozen_test"]["false_alerts"])
-        self.assertEqual(hf["basira"]["model"]["shipped"]["long_run_false_alert_estimate"],
-                         b["model"]["calibration_study"]["shipped_calibration"]["long_run_false_alert_estimate"])
+        for side in ("baseline", "model"):
+            shipped = b[side]["calibration_study"]["shipped_calibration"]
+            self.assertEqual(hf["basira"][side]["shipped"], {"m": shipped["m"], "rate": shipped["long_run_false_alert_estimate"],
+                                                              "p_worse": shipped["probability_of_a_bank_at_least_this_bad"]})
         self.assertEqual([[p[k] for k in ("policy", "reference", "mean_daily_difference_95ci")] for p in hf["rasid"]["paired"]],
                          [[p[k] for k in ("policy", "reference", "mean_daily_difference_95ci")] for p in r["model"]["paired_comparisons"]])
         # Pinball and CRPS are compared on the shared levels only, never with the shipped file's values.
         self.assertEqual(hf["rasid"]["levels"], r["baseline"]["forecast"]["shared_levels"])
         self.assertEqual(hf["rasid"]["forecast"]["pinball"], [r["baseline"]["forecast"]["ridge_mean_pinball"], r["model"]["forecast"]["chronos_mean_pinball"]])
         self.assertEqual(hf["rasid"]["forecast"]["crps"], [r["baseline"]["forecast"]["ridge_truncated_crps"], r["model"]["forecast"]["chronos_truncated_crps"]])
-        for kind in ("bilingual", "en", "ar"):
-            self.assertEqual(hf["sanad"]["e5"][kind], s["model"]["metrics"][kind]["all"])
-            self.assertEqual(hf["sanad"]["lexical"][kind], s["baseline"]["metrics"][kind]["all"])
+        for kind in ("bilingual", "en", "ar"):  # [recall@1, recall@3, MRR@4]
+            self.assertEqual(hf["sanad"]["e5"][kind], [s["model"]["metrics"][kind]["all"][m] for m in ("recall_at_1", "recall_at_3", "mrr_at_4")])
+            self.assertEqual(hf["sanad"]["lexical"][kind], [s["baseline"]["metrics"][kind]["all"][m] for m in ("recall_at_1", "recall_at_3", "mrr_at_4")])
         self.assertEqual(hf["sanad"]["notes"], s["notes"])
+        # Wording thresholds come from the files: the study's stated precision and the gate's solver tolerance.
+        self.assertIn(f"±{hf['basira']['precision_points']} percentage points", b["baseline"]["calibration_study"]["scope"])
+        self.assertEqual(hf["rasid"]["shipped_gap"], max(r["gate"]["total_cost_relative_difference"][k] for k in ("candidate", "candidate_risk_neutral")))
+        self.assertEqual(hf["rasid"]["tolerance"], r["settings"]["gate_tolerances"]["candidate_totals_relative"])
         self.assertEqual([hf[k]["repo"] for k in ("basira", "rasid", "sanad")], [source[k]["identity"]["repo"] for k in ("basira", "rasid", "sanad")])
         # A summary: no per-item, per-day or gate records, and a small fraction of the three evidence files.
         keys = set()

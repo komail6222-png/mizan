@@ -132,10 +132,21 @@ def run(chromium=None, screenshots=None, demo=None, spaces=None, site=None):
                     page.wait_for_timeout(50)
                     answered.append(bool(page.locator(f"#{chart} .tip").inner_text().strip()))
                 assert all(answered) and not errors and not external, (answered, errors, external)
+                readings = []
+                hf = ROOT / "reports/hf/rasid.json"
+                if hf.exists():  # the Hugging Face section reads each stored paired interval by its sign
+                    pairs = json.loads(hf.read_bytes())["model"]["paired_comparisons"]
+                    spans = [p["mean_daily_difference_95ci"][0] <= 0 <= p["mean_daily_difference_95ci"][1] for p in pairs]
+                    expected = ["Not resolved" if s else "Costlier" if p["mean_daily_difference_95ci"][0] > 0 else "Cheaper" for p, s in zip(pairs, spans)]
+                    readings = page.locator("#hf-paired tr td:last-child").all_inner_texts()
+                    assert len(readings) == len(pairs) and all(r.startswith(x) for r, x in zip(readings, expected)), (readings, expected)
+                    key = [s for p, s in zip(pairs, spans) if (p["policy"], p["reference"]) == ("chronos_risk_neutral", "candidate_risk_neutral")]
+                    assert key and ("not resolved" in page.inner_text("#hf-paired-sub")) == key[0], page.inner_text("#hf-paired-sub")
+                    assert page.evaluate("[...document.querySelectorAll('#hf-section table.fit')].every(t => t.parentNode.scrollWidth <= t.parentNode.clientWidth)"), "an HF comparison table scrolls"
                 if screenshots:
                     page.screenshot(path=str(Path(screenshots) / f"{width}-report.png"), full_page=True)
                 reports.append({"viewport": [width, height], "views": ["evaluation-report"], "page_errors": 0,
-                                "external_requests": 0, "charts_with_tooltips": len(answered)})
+                                "external_requests": 0, "charts_with_tooltips": len(answered), "hf_paired_readings": len(readings)})
                 page.close()
         if site:
             reports.extend(check_landing(browser, site, screenshots))
