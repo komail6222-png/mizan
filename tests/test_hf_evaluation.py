@@ -12,6 +12,7 @@ from mizan.basira import engine as b
 from mizan.core.contract import Refused
 from mizan.rasid.forecast import records, vintage
 from mizan.rasid.solver import solve
+from mizan.sanad import engine as s
 
 ROOT = Path(__file__).resolve().parents[1]
 SHIPPED = json.loads((ROOT / "reports/evaluation/basira.json").read_text())
@@ -286,6 +287,178 @@ class RasidHarnessTests(unittest.TestCase):
         self.assertEqual({k: s[k] for k in evaluation.POLICIES}, RASID["decision_quality"])
         self.assertEqual((s["chronos"], s["chronos_risk_neutral"]),
                          (RASID["decision_quality"]["seasonal_naive"], RASID["decision_quality"]["candidate"]))
+
+
+def _oracle_embedder():
+    """Attribute k gets the unit vector e_k: a query naming its labels and the line stating it (label before the
+    colon) share it. Every other line gets one more axis, orthogonal to all attribute vectors."""
+    attrs = list(s.ATTR); eye = np.eye(len(attrs) + 1)
+    def axis(text):
+        if text.startswith("query: "):
+            found = [i for i, a in enumerate(attrs) if any(label in text for label in s.ATTR[a])]
+            assert len(found) == 1, text; return found[0]
+        assert text.startswith("passage: "), text
+        left = text[len("passage: "):].partition(":")[0].strip()
+        return next((i for i, a in enumerate(attrs) if left in s.ATTR[a]), len(attrs))
+    return lambda strings: eye[[axis(t) for t in strings]]
+
+
+def _constant_embedder(strings):
+    return np.ones((len(strings), 3))   # every cosine is 1: the ranking is document order
+
+
+KINDS = ("bilingual", "en", "ar")
+
+
+def _queries(attr):
+    return {"bilingual": " ".join(s.ATTR[attr]), "en": s.ATTR[attr][0], "ar": s.ATTR[attr][1]}
+
+
+class SanadHarnessTests(unittest.TestCase):
+    def test_gold_is_defined_by_the_grammar(self):
+        items = hf.retrieval_set(10, seed=7)
+        self.assertEqual({i["language"] for i in items}, {"en", "ar"})
+        for it in items:
+            claims = s.parse_document(it["doc"], it["model"])["claims"]
+            self.assertEqual({c["attribute"] for c in claims}, set(it["gold"]))
+        self.assertEqual(hf.retrieval_set_digest(items), hf.retrieval_set_digest(hf.retrieval_set(10, seed=7)))
+
+    def test_oracle_embedder_scores_one_and_lexical_is_bounded(self):
+        r = hf.sanad_hf(_oracle_embedder(), n_docs=10, seed=7)
+        self.assertEqual(r["metrics"]["e5"]["bilingual"]["all"]["recall_at_1"], 1.0)
+        for v in r["metrics"]["lexical"]["bilingual"]["all"].values(): self.assertTrue(0 <= v <= 1)
+
+    def test_set_layout_one_gold_line_per_attribute_and_fixed_distractors(self):
+        items = hf.retrieval_set(12, seed=3)
+        self.assertEqual([it["language"] for it in items].count("en"), 6)
+        for it in items:
+            lang, lines = it["language"], it["lines"]; page, = it["doc"]["pages"]
+            self.assertEqual(lines, page.split("\n")); self.assertEqual(len(set(lines)), len(lines))
+            self.assertEqual(lines[0], ("Model: " if lang == "en" else "الطراز: ") + it["model"])
+            claims = s.parse_document(it["doc"], it["model"])["claims"]
+            self.assertEqual(it["gold"], {c["attribute"]: [lines.index(c["quote"])] for c in claims})
+            self.assertEqual(len(claims), len(it["gold"])); self.assertTrue(3 <= len(claims) <= 5)
+            for attr, (i,) in it["gold"].items():
+                label, _, value = lines[i].partition(": ")
+                self.assertEqual(label, s.ATTR[attr][0 if lang == "en" else 1])
+                if lang == "ar": self.assertFalse(any(c.isascii() and c.isdigit() for c in value), value)
+            gold = {i for (i,) in it["gold"].values()}
+            distractors = [x for i, x in enumerate(lines) if i and i not in gold]
+            self.assertTrue(4 <= len(distractors) <= 6); self.assertLessEqual(set(distractors), set(hf.DISTRACTORS[lang]))
+        self.assertNotEqual(hf.retrieval_set_digest(items), hf.retrieval_set_digest(hf.retrieval_set(12, seed=4)))
+        self.assertEqual(hf.retrieval_set_digest(items), hf.retrieval_set_digest(hf.retrieval_set(12, seed=3)))
+
+    def test_generator_stops_when_a_distractor_is_a_claim(self):
+        claims = [f"Transfer time: {n} ms" for n in range(1, 9)]
+        with mock.patch.dict(hf.DISTRACTORS, {"en": claims}), self.assertRaises(Refused) as caught:
+            hf.retrieval_set(4, seed=7)
+        self.assertEqual(caught.exception.code, "RETRIEVAL_SET")
+        heading = ["Model: Other-1"] + hf.DISTRACTORS["en"][1:]   # a second model heading hides the attribute lines
+        with mock.patch.dict(hf.DISTRACTORS, {"en": heading}), self.assertRaises(Refused) as caught:
+            hf.retrieval_set(20, seed=7)
+        self.assertEqual(caught.exception.code, "RETRIEVAL_SET")
+
+    def test_oracle_is_perfect_for_every_query_kind_and_language(self):
+        r = hf.sanad_hf(_oracle_embedder(), n_docs=10, seed=7)
+        items = hf.retrieval_set(10, seed=7)
+        self.assertEqual((r["n_docs"], r["seed"], r["set_digest"]), (10, 7, hf.retrieval_set_digest(items)))
+        self.assertEqual(r["queries"], sum(len(it["gold"]) for it in items))
+        self.assertEqual(r["queries_by_language"], {lang: sum(len(it["gold"]) for it in items if it["language"] == lang) for lang in ("en", "ar")})
+        self.assertEqual(r["documents"], {"en": 5, "ar": 5})
+        self.assertEqual(list(r["metrics"]), ["lexical", "e5"])
+        for kind in KINDS:
+            for lang in ("en", "ar", "all"):
+                self.assertEqual(r["metrics"]["e5"][kind][lang], {"recall_at_1": 1.0, "recall_at_3": 1.0, "mrr_at_4": 1.0})
+                self.assertEqual(list(r["metrics"]["lexical"][kind][lang]), ["recall_at_1", "recall_at_3", "mrr_at_4"])
+        self.assertEqual(r["lexical_ranker"], "mizan.sanad.engine.retrieve")
+        for text in ("parse_document", "top four", "query: ", "passage: ", "document order", "not recomputed"):
+            self.assertIn(text, r["protocol"])
+
+    def test_metrics_follow_their_definitions_with_ties_in_document_order(self):
+        r = hf.sanad_hf(_constant_embedder, n_docs=10, seed=7)
+        items = hf.retrieval_set(10, seed=7)
+        for lang in ("en", "ar", "all"):
+            idx = [i for it in items if lang in (it["language"], "all") for (i,) in it["gold"].values()]
+            self.assertTrue(any(i >= 4 for i in idx) and any(i < 3 for i in idx))   # both sides of each cutoff occur
+            for kind in KINDS:
+                got = r["metrics"]["e5"][kind][lang]
+                self.assertEqual(got["recall_at_1"], 0.0)   # line 0 is the model heading, never gold
+                self.assertEqual(got["recall_at_3"], sum(i < 3 for i in idx) / len(idx))
+                self.assertAlmostEqual(got["mrr_at_4"], sum(1 / (i + 1) for i in idx if i < 4) / len(idx), places=12)
+
+    def test_lexical_ranking_is_the_engines_retrieve_over_every_line(self):
+        items = hf.retrieval_set(10, seed=7); calls = []; real = s.retrieve
+        def counted(claims, query):
+            calls.append(([c["quote"] for c in claims], query)); return real(claims, query)
+        with mock.patch.object(s, "retrieve", counted):
+            r = hf.sanad_hf(_oracle_embedder(), n_docs=10, seed=7)
+        want = [(it["lines"], q) for it in items for a in it["gold"] for q in _queries(a).values()]
+        self.assertEqual(sorted(calls), sorted(want)); self.assertEqual(len(calls), 3 * r["queries"])
+        for kind in KINDS:
+            for lang in ("en", "ar", "all"):
+                rr, hits = [], []
+                for it in items:
+                    if lang not in (it["language"], "all"): continue
+                    rows = [{"quote": x, "page": 1, "source": ""} for x in it["lines"]]
+                    for a, (i,) in it["gold"].items():
+                        top = [x["quote"] for x in real(rows, _queries(a)[kind])]
+                        rank = top.index(it["lines"][i]) + 1 if it["lines"][i] in top else None
+                        rr.append(1 / rank if rank else 0.0); hits.append(rank)
+                got = r["metrics"]["lexical"][kind][lang]
+                self.assertEqual(got["recall_at_1"], sum(h == 1 for h in hits) / len(hits))
+                self.assertEqual(got["recall_at_3"], sum(h is not None and h <= 3 for h in hits) / len(hits))
+                self.assertAlmostEqual(got["mrr_at_4"], sum(rr) / len(rr), places=12)
+
+    def test_one_embedding_call_per_document_and_one_for_the_queries(self):
+        calls = []; oracle = _oracle_embedder()
+        def recording(strings):
+            calls.append(list(strings)); return oracle(strings)
+        hf.sanad_hf(recording, n_docs=4, seed=7)
+        items = hf.retrieval_set(4, seed=7)
+        self.assertEqual(sorted(calls[0]), sorted("query: " + q for a in s.ATTR for q in _queries(a).values()))
+        self.assertEqual(len(calls[0]), 15)
+        self.assertEqual(calls[1:], [["passage: " + x for x in it["lines"]] for it in items])
+
+    def test_refuses_malformed_embeddings(self):
+        oracle = _oracle_embedder()
+        for name, bad in (("one row short", lambda t: oracle(t)[:-1]), ("flat", lambda t: oracle(t).ravel()),
+                          ("nan", lambda t: oracle(t) * np.nan), ("zero row", lambda t: oracle(t) * 0),
+                          ("width differs", lambda t: np.hstack([oracle(t)] * (2 if t[0].startswith("passage: ") else 1)))):
+            with self.subTest(name), self.assertRaises(Refused) as caught:
+                hf.sanad_hf(bad, n_docs=2, seed=7)
+            self.assertEqual(caught.exception.code, "EMBEDDING")
+
+    def test_gate_passes_two_runs_whatever_the_embedder_and_names_every_check(self):
+        first = hf.sanad_hf(_oracle_embedder(), n_docs=10, seed=7); second = hf.sanad_hf(_constant_embedder, n_docs=10, seed=7)
+        self.assertNotEqual(first["metrics"]["e5"], second["metrics"]["e5"])
+        g = hf.sanad_gate(first, second)
+        self.assertTrue(g["passed"]); self.assertEqual(g["mismatches"], [])
+        self.assertEqual(g["checked"][:3], ["set_digest", "queries", "lexical_ranker"])
+        self.assertEqual(len(g["checked"]), 3 + 27); self.assertEqual(len(set(g["checked"])), 30)
+        self.assertIn("metrics.lexical.ar.en.mrr_at_4", g["checked"])
+        self.assertFalse(any(".e5." in n for n in g["checked"]))
+
+    def test_gate_fails_when_a_lexical_metric_differs(self):
+        first = hf.sanad_hf(_oracle_embedder(), n_docs=10, seed=7)
+        second = json.loads(json.dumps(first)); second["metrics"]["lexical"]["en"]["ar"]["recall_at_3"] += 1e-12
+        g = hf.sanad_gate(first, second)
+        self.assertFalse(g["passed"]); self.assertEqual(g["mismatches"], ["metrics.lexical.en.ar.recall_at_3"])
+        del second["metrics"]["lexical"]["en"]["ar"]["recall_at_3"]   # absent on one side never matches
+        self.assertEqual(hf.sanad_gate(first, second)["mismatches"], ["metrics.lexical.en.ar.recall_at_3"])
+        self.assertFalse(hf.sanad_gate({}, {})["passed"])
+
+    def test_gate_fails_on_another_set_or_another_lexical_ranker(self):
+        first = hf.sanad_hf(_oracle_embedder(), n_docs=10, seed=7)
+        g = hf.sanad_gate(first, hf.sanad_hf(_oracle_embedder(), n_docs=10, seed=8))
+        self.assertFalse(g["passed"]); self.assertIn("set_digest", g["mismatches"])
+        real = s.retrieve
+        def wrapped(claims, query):
+            return real(claims, query)   # same numbers, but not the engine function
+        with mock.patch.object(s, "retrieve", wrapped):
+            other = hf.sanad_hf(_oracle_embedder(), n_docs=10, seed=7)
+        self.assertEqual(other["metrics"]["lexical"], first["metrics"]["lexical"])
+        self.assertEqual(hf.sanad_gate(first, other)["mismatches"], ["lexical_ranker"])
+        self.assertEqual(hf.sanad_gate(other, other)["mismatches"], ["lexical_ranker"])
 
 
 if __name__ == "__main__":

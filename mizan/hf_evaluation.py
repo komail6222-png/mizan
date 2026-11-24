@@ -1,21 +1,26 @@
 """Held-out evaluation harnesses with injectable components, for the pinned Hugging Face checkpoints.
 
-Each harness repeats a shipped loop of mizan/evaluation.py operation for operation, with the component passed in.
-Run with the current component, it must reproduce reports/evaluation/ (exactly; for RASID, the stated tolerances);
-a gate checks that before any model result is trusted. This module never imports torch: callers pass feature functions, forecasters or embedders.
+The BASIRA and RASID harnesses repeat a shipped loop of mizan/evaluation.py operation for operation, with the
+component passed in. Run with the current component, they must reproduce reports/evaluation/ (exactly; for RASID,
+the stated tolerances); a gate checks that before any model result is trusted. SANAD has no shipped retrieval
+numbers: its harness ranks a generated retrieval set whose gold comes from the grammar, and its gate checks that two
+runs agree exactly on the set and on the engine's own lexical retriever. This module never imports torch: callers
+pass feature functions, forecasters or embedders.
 """
 import math
+import random
 from collections.abc import Callable,Sequence
 from datetime import datetime,timedelta,timezone
 from fractions import Fraction
 import numpy as np
 from . import examples
 from .basira import engine as b
-from .core.contract import require
+from .core.contract import digest,require
 from .evaluation import POLICIES,decision_summary,paired_comparison,policy_problem,realized
 from .rasid.forecast import HOUR,forecast,quantile_scores,records,vintage
 from .rasid.solver import solve
 from .rasid.verify import verify
+from .sanad import engine as s
 
 _MISSING=object()
 
@@ -258,4 +263,151 @@ def rasid_gate(result:dict,shipped:dict)->dict:
                  w.get("verified_feasible_plans",_MISSING))]
     pairs+=_row_pairs("origins","date",result.get("origins",[]),shipped["origins"],
                       ("date","ridge_mae","naive_mae","coverage_80_load"),{"ridge_mae":mae,"naive_mae":mae})
+    return _compare(pairs)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# SANAD: a generated retrieval set whose gold is the grammar's claims, ranked by the engine's retriever and an embedder
+
+Embedder=Callable[[list[str]],np.ndarray]  # strings -> (n, d) vectors; the harness adds the "query: " / "passage: " prefixes
+DISTRACTORS = {"en": ["Input voltage: 230 V", "Weight: 32 kg", "Efficiency (eco mode): 99 %", "Derated 10% above 40 °C",
+                      "Rated apparent power varies by configuration", "Dimensions: 440 x 600 mm", "Noise level: 45 dB", "Battery type: VRLA"],
+               "ar": ["جهد الدخل: 230 فولت", "الوزن: ٣٢ كجم", "الكفاءة في الوضع الاقتصادي: ٩٩٪", "ينخفض الأداء ١٠٪ فوق ٤٠ درجة",
+                      "القدرة الظاهرية الاسمية تختلف حسب التهيئة", "الأبعاد: ٤٤٠ × ٦٠٠ مم", "مستوى الضجيج: ٤٥ ديسيبل", "نوع البطارية: VRLA"]}
+# attribute: (lowest and highest whole value, English unit spellings, Arabic unit spellings); every spelling is in s.UNITS
+RETRIEVAL_VALUES={"apparent_power":(10,200,("kVA",),("kVA","كيلو فولت أمبير")),"active_power":(8,180,("kW",),("kW","كيلوواط")),
+                  "runtime_100":(5,30,("min","minutes"),("دقيقة","دقائق")),"efficiency_100":(90,97,("%",),("٪",)),
+                  "transfer_time":(2,12,("ms",),("ms","مللي ثانية"))}
+MODEL_FAMILIES=("Atlas","Noor","Sahm","Qamar","Rawda","Waha")
+HEADINGS={"en":"Model: ","ar":"الطراز: "}
+QUERY_KINDS=("bilingual","en","ar")
+RETRIEVAL_LANGUAGES=("en","ar","all")
+RETRIEVAL_METRICS=("recall_at_1","recall_at_3","mrr_at_4")
+LEXICAL_RANKER="mizan.sanad.engine.retrieve"
+ARABIC_DIGITS=str.maketrans("0123456789","٠١٢٣٤٥٦٧٨٩")
+SANAD_PROTOCOL=("Generated retrieval set: seeded single-page datasheets, alternately English and Arabic, each a model heading, "
+                "then three to five scored attribute lines (each attribute at most once, grammar-valid values, Arabic-Indic digits "
+                "in Arabic) and four to six near-miss lines from a fixed distractor pool per language, shuffled together. Gold is "
+                "the line sanad.engine.parse_document extracts as the claim for each attribute; the generator stops "
+                "(RETRIEVAL_SET) unless every attribute line is that claim and no other line is any claim. Each attribute is "
+                "asked three ways: bilingual (English and Arabic labels joined, as assess builds its query), English label only "
+                "and Arabic label only. Both retrievers rank every line of the document, the heading included. Lexical: "
+                "sanad.engine.retrieve, unchanged (character-trigram TF-IDF), which returns its top four. Embedding: cosine "
+                "between 'query: ' and 'passage: ' vectors, each document's lines encoded in one call and all queries in one "
+                "call; ties keep document order, as the stable sort in retrieve does. Recall@1, recall@3 and MRR@4 "
+                "(reciprocal rank 0 beyond rank four, where the engine stops). Verdicts are not recomputed from any ranking: "
+                "the grammar keeps verdict authority.")
+
+
+def _attribute_line(attr,lang,rng):
+    low,high,english,arabic=RETRIEVAL_VALUES[attr]
+    value=str(rng.randint(low,high));unit=rng.choice(english if lang=="en" else arabic)
+    if lang=="ar":value=value.translate(ARABIC_DIGITS)
+    return s.ATTR[attr][0 if lang=="en" else 1]+": "+value+("" if unit in ("%","٪") else " ")+unit
+
+
+def retrieval_set(n_docs=120,seed=2024)->list[dict]:
+    """Seeded single-page datasheets, alternately English and Arabic: a model heading, then three to five scored
+    attribute lines (each attribute at most once) and four to six lines of the language's distractor pool, shuffled.
+
+    gold maps each attribute to the index in lines of the line s.parse_document extracts as its claim. The set stops
+    (RETRIEVAL_SET) unless the grammar's claims are exactly the generated attribute lines, one per attribute: every
+    attribute line is extracted as that attribute's claim and no distractor (nor the heading) is any claim."""
+    require(type(n_docs) is int and n_docs>=2,"RETRIEVAL_SET","Expected at least two documents, one per language")
+    rng=random.Random(seed);items=[]
+    for i in range(n_docs):
+        lang=("en","ar")[i%2];model=f"{rng.choice(MODEL_FAMILIES)}-{rng.randint(10,400)}"
+        body=[(a,_attribute_line(a,lang,rng)) for a in rng.sample(list(s.ATTR),rng.randint(3,5))]
+        body+=[(None,x) for x in rng.sample(DISTRACTORS[lang],rng.randint(4,6))]
+        rng.shuffle(body)
+        lines=[HEADINGS[lang]+model]+[x for _,x in body];page="\n".join(lines)
+        doc={"name":f"retrieval-{i:03d}-{lang}","pages":[page]}
+        found=list(s.page_lines(page));index={start:j for j,(start,_) in enumerate(found)}
+        require([x for _,x in found]==lines and len(set(lines))==len(lines),"RETRIEVAL_SET",f"Document {i}: lines are not distinct")
+        gold={}
+        for c in s.parse_document(doc,model)["claims"]:
+            gold.setdefault(c["attribute"],[]).append(index.get(c["start"]) if c["page"]==1 else None)
+        want={a:[j] for j,(a,_) in enumerate(body,1) if a}
+        require(gold==want,"RETRIEVAL_SET",f"Document {i}: the grammar's claims {gold} are not the attribute lines {want}")
+        items.append({"doc":doc,"model":model,"language":lang,"gold":gold,"lines":lines})
+    return items
+
+
+def retrieval_set_digest(items)->str:
+    """core.contract.digest of the documents; the model, language, lines and gold follow from them through the grammar."""
+    return digest([it["doc"] for it in items])
+
+
+def _query(attr,kind):
+    english,arabic=s.ATTR[attr]
+    return {"bilingual":" ".join(s.ATTR[attr]),"en":english,"ar":arabic}[kind]  # bilingual: the query assess builds
+
+
+def _unit_rows(embed_fn,strings):
+    v=np.asarray(embed_fn(strings),dtype=np.float64)
+    require(v.ndim==2 and v.shape[0]==len(strings) and v.shape[1]>0 and bool(np.all(np.isfinite(v))),
+            "EMBEDDING","Expected finite (n, d) vectors, one row per string")
+    norm=np.linalg.norm(v,axis=1,keepdims=True);require(bool(np.all(norm>0)),"EMBEDDING","A zero vector has no direction")
+    return v/norm
+
+
+def _rank(order,gold):
+    """1-based rank of the first gold line among the first four of order, or None beyond four."""
+    return next((k for k,j in enumerate(order[:4],1) if j in gold),None)
+
+
+def _retrieval_metrics(ranks):
+    n=len(ranks)
+    return {"recall_at_1":sum(r==1 for r in ranks)/n,"recall_at_3":sum(r is not None and r<=3 for r in ranks)/n,
+            "mrr_at_4":sum(1/r for r in ranks if r)/n}
+
+
+def _qualified(fn):
+    return f"{getattr(fn,'__module__',None)}.{getattr(fn,'__qualname__',type(fn).__name__)}"
+
+
+def sanad_hf(embed_fn:Embedder,*,n_docs=120,seed=2024)->dict:
+    """Rank every line of each retrieval_set() document for each (attribute, query kind) with the engine's own
+    s.retrieve (its top four) and with cosine over embed_fn vectors, and score both against the grammar's gold.
+
+    embed_fn is called once with every query ("query: " prefix) and then once per document with all its lines
+    ("passage: " prefix). metrics[retriever][query_kind][doc_language] holds recall@1, recall@3 and MRR@4; queries
+    counts (document, attribute) pairs, each asked in the three query kinds. lexical_ranker names the function that
+    ranked the lexical side; nothing about verdicts is computed here (SANAD_PROTOCOL)."""
+    items=retrieval_set(n_docs,seed);rank=s.retrieve
+    asked=[(a,kind) for a in s.ATTR for kind in QUERY_KINDS];column={x:i for i,x in enumerate(asked)}
+    queries=_unit_rows(embed_fn,["query: "+_query(*x) for x in asked])
+    ranks={(r,kind,lang):[] for r in ("lexical","e5") for kind in QUERY_KINDS for lang in RETRIEVAL_LANGUAGES}
+    for it in items:
+        lines=it["lines"];where={x:j for j,x in enumerate(lines)};rows=[{"quote":x,"page":1,"source":""} for x in lines]
+        passages=_unit_rows(embed_fn,["passage: "+x for x in lines])
+        require(passages.shape[1]==queries.shape[1],"EMBEDDING","Query and passage vectors differ in width")
+        cosine=passages@queries.T
+        for a,gold in it["gold"].items():
+            for kind in QUERY_KINDS:
+                lexical=[where[x["quote"]] for x in rank(rows,_query(a,kind))]
+                e5=np.argsort(-cosine[:,column[a,kind]],kind="stable").tolist()
+                for name,order in (("lexical",lexical),("e5",e5)):
+                    for lang in (it["language"],"all"):ranks[name,kind,lang].append(_rank(order,gold))
+    count=lambda lang:sum(len(it["gold"]) for it in items if lang in (it["language"],"all"))
+    return {"n_docs":n_docs,"seed":seed,"set_digest":retrieval_set_digest(items),
+            "documents":{lang:sum(it["language"]==lang for it in items) for lang in ("en","ar")},
+            "queries":count("all"),"queries_by_language":{lang:count(lang) for lang in ("en","ar")},"lexical_ranker":_qualified(rank),
+            "metrics":{name:{kind:{lang:_retrieval_metrics(ranks[name,kind,lang]) for lang in RETRIEVAL_LANGUAGES}
+                             for kind in QUERY_KINDS} for name in ("lexical","e5")},
+            "protocol":SANAD_PROTOCOL}
+
+
+def sanad_gate(first:dict,second:dict)->dict:
+    """Exact agreement of two sanad_hf runs on everything the embedder cannot change.
+
+    Checks set_digest and queries; lexical_ranker, which must be LEXICAL_RANKER (the engine's s.retrieve) in both;
+    and every lexical metric (3 query kinds x 3 languages x 3 metrics). The embedding side is not compared."""
+    def lexical(r,kind,lang,m):
+        return r.get("metrics",{}).get("lexical",{}).get(kind,{}).get(lang,{}).get(m,_MISSING)
+    pairs=[(k,first.get(k,_MISSING),second.get(k,_MISSING)) for k in ("set_digest","queries")]
+    pairs.append(("lexical_ranker",first.get("lexical_ranker",_MISSING),second.get("lexical_ranker",_MISSING),
+                  lambda got,want:got==want==LEXICAL_RANKER))
+    pairs+=[(f"metrics.lexical.{kind}.{lang}.{m}",lexical(first,kind,lang,m),lexical(second,kind,lang,m))
+            for kind in QUERY_KINDS for lang in RETRIEVAL_LANGUAGES for m in RETRIEVAL_METRICS]
     return _compare(pairs)
