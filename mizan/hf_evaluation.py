@@ -84,21 +84,29 @@ def _basira_study(score,shipped,ident,draws,sizes,pools,alpha=BASIRA_ALPHA,delta
             "minimum_m_for_pac":b.minimum_m(alpha,delta),"rows":rows,"scope":BASIRA_STUDY_SCOPE}
 
 
+def _row_pairs(name,key,got_rows,want_rows,fields=None):
+    """Named pairs for two row lists matched by position (all fields of both sides unless given); a missing row is empty."""
+    pairs=[]
+    for i in range(max(len(got_rows),len(want_rows))):
+        g=got_rows[i] if i<len(got_rows) else {};w=want_rows[i] if i<len(want_rows) else {}
+        label=f"{name}[{key}={w.get(key,g.get(key))}]."
+        pairs+=[(label+k,g.get(k,_MISSING),w.get(k,_MISSING)) for k in fields or sorted(set(g)|set(w))]
+    return pairs
+
+
 def basira_gate(result:dict,shipped:dict)->dict:
     """Exact-equality check of a harness run against reports/evaluation/basira.json (the shipped descriptor at full size).
 
-    Checks the frozen test's detections, false alerts and bank digest, the study settings and bank digest, every field
-    of the shipped-calibration summary and every field of every calibration row."""
+    Checks the frozen test's detections, false alerts and bank digest, the seed, condition, p-value and flag of each
+    frozen item, the study settings and bank digest, every field of the shipped-calibration summary and every field of
+    every calibration row."""
     got,want=result.get("frozen_test",{}),shipped
     pairs=[(k,got.get(k,_MISSING),want.get(k,_MISSING)) for k in ("detected","false_alerts","bank_digest")]
+    pairs+=_row_pairs("frozen_test.rows","seed",got.get("rows",[]),want["rows"],("seed","condition","p_value","flag"))
     got,want=result.get("calibration_study",{}),shipped["calibration_study"]
     pairs+=[("calibration_study."+k,got.get(k,_MISSING),want.get(k,_MISSING))
             for k in ("alpha","delta","draws_per_size","pools","minimum_m_for_pac","bank_digest")]
     g,w=got.get("shipped_calibration",{}),want["shipped_calibration"]
     pairs+=[("shipped_calibration."+k,g.get(k,_MISSING),w.get(k,_MISSING)) for k in sorted(set(g)|set(w))]
-    got_rows,want_rows=got.get("rows",[]),want["rows"]
-    for i in range(max(len(got_rows),len(want_rows))):
-        g=got_rows[i] if i<len(got_rows) else {};w=want_rows[i] if i<len(want_rows) else {}
-        label=f"rows[m={w.get('m',g.get('m'))}]."
-        pairs+=[(label+k,g.get(k,_MISSING),w.get(k,_MISSING)) for k in sorted(set(g)|set(w))]
+    pairs+=_row_pairs("rows","m",got.get("rows",[]),want["rows"])
     return _compare(pairs)
