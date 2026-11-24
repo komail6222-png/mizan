@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import stat
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -520,6 +521,8 @@ class EvaluateScriptTests(unittest.TestCase):
              mock.patch.object(hf, "rasid_gate", return_value=PASS), mock.patch.object(evaluate_hf.os, "replace", side_effect=renaming):
             result = evaluate_hf.run("unused", self.out, loaders=STUB_LOADERS)
         self.assertEqual(sorted(p.name for p in self.out.iterdir()), [k + ".json" for k in SYSTEMS])   # no staging file left
+        for kind in SYSTEMS:   # readable by others, not mkstemp's owner-only 0600
+            self.assertEqual(stat.S_IMODE((self.out / f"{kind}.json").stat().st_mode), 0o644, kind)
         # Each file is staged in the output directory and renamed into place; all are staged before the first rename.
         self.assertEqual([dst for _, dst, _ in renames], [k + ".json" for k in SYSTEMS])
         for (src, _, _), kind in zip(renames, SYSTEMS):
@@ -562,6 +565,51 @@ class EvaluateScriptTests(unittest.TestCase):
         notes = " ".join(sanad["notes"])
         for text in ("near its ceiling", "exact attribute label", "English-only and Arabic-only queries are the discriminating comparison"):
             self.assertIn(text, notes)
+
+    def test_the_evidence_directory_is_written_only_with_repeat(self):
+        self.assertEqual(evaluate_hf.EVIDENCE_DIR, ROOT / "reports" / "hf")
+        loaded = []; loaders = {"rasid": lambda root: loaded.append(root) or naive_stub}
+        with mock.patch.object(evaluate_hf, "EVIDENCE_DIR", self.out), mock.patch.dict(evaluate_hf.FULL_SIZES, SMALL), \
+             mock.patch.object(hf, "rasid_gate", return_value=PASS):
+            for out in (self.out, self.out / "elsewhere" / ".."):   # the same directory, however it is spelled
+                with self.subTest(out=str(out)), self.assertRaises(Refused) as caught:
+                    evaluate_hf.run("unused", out, only="rasid", loaders=loaders)
+                self.assertEqual(caught.exception.code, "EVIDENCE_OUT"); self.assertIn("--repeat", str(caught.exception))
+            self.assertEqual(loaded, []); self.assertEqual(list(self.out.iterdir()), [])   # refused before any model loads
+            evaluate_hf.run("unused", self.out, only="rasid", repeat=True, loaders=loaders)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()), ["rasid.json"]); self.assertIn("repeat_run", self.read("rasid"))
+
+    def test_main_exits_0_after_writing_and_prints_the_summary(self):
+        out = self.out / "out"
+        with mock.patch.object(models, "e5_embedder", lambda root: _oracle_embedder()), contextlib.redirect_stdout(io.StringIO()) as printed:
+            code = evaluate_hf.main(["--models", "unused", "--out", str(out), "--only", "sanad"])
+        self.assertEqual(code, 0); self.assertEqual(sorted(p.name for p in out.iterdir()), ["sanad.json"])
+        self.assertTrue(printed.getvalue().startswith("sanad: gate passed"), printed.getvalue())
+
+    def test_main_returns_1_when_the_run_is_refused(self):
+        out = self.out / "out"   # the default E5 loader refuses an unimported checkpoint before torch is touched
+        code = evaluate_hf.main(["--models", str(self.out / "no-models"), "--out", str(out), "--only", "sanad"])
+        self.assertEqual(code, 1); self.assertIn("Refused HF_OFFLINE_MISS", self.err.getvalue()); self.assertFalse(out.exists())
+
+    def test_main_exits_2_when_a_gate_fails(self):
+        out = self.out / "out"
+        with mock.patch.dict(evaluate_hf.FULL_SIZES, SMALL), self.assertRaises(SystemExit) as e:   # quick sizes never pass the real gate
+            evaluate_hf.main(["--models", str(self.out / "no-models"), "--out", str(out), "--only", "basira"])
+        self.assertEqual(e.exception.code, 2); self.assertIn("basira: gate failed", self.err.getvalue()); self.assertFalse(out.exists())
+
+    def test_main_returns_1_for_the_evidence_directory_without_repeat(self):
+        evidence = ROOT / "reports" / "hf"; before = {p.name: p.read_bytes() for p in evidence.iterdir()}
+        for out in (str(evidence), os.path.relpath(evidence)):
+            with self.subTest(out=out):
+                self.err.seek(0); self.err.truncate()
+                code = evaluate_hf.main(["--models", str(self.out / "no-models"), "--out", out, "--only", "sanad"])
+                self.assertEqual(code, 1); self.assertIn("Refused EVIDENCE_OUT", self.err.getvalue())
+        self.assertEqual({p.name: p.read_bytes() for p in evidence.iterdir()}, before)
+
+    def test_main_requires_out(self):
+        with self.assertRaises(SystemExit) as e:   # an argparse usage error, before any run
+            evaluate_hf.main(["--models", str(self.out / "no-models"), "--only", "sanad"])
+        self.assertEqual(e.exception.code, 2); self.assertIn("the following arguments are required: --out", self.err.getvalue())
 
     def test_repeat_records_an_identical_second_run(self):
         with mock.patch.dict(evaluate_hf.FULL_SIZES, SMALL), mock.patch.object(hf, "rasid_gate", return_value=PASS):

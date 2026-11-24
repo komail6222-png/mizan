@@ -1,6 +1,10 @@
 """Evaluate the pinned Hugging Face models on the held-out protocol (optional runtime, .venv-hf).
 
-    python scripts/evaluate_hf.py --models var/hf --out reports/hf [--only basira|rasid|sanad] [--repeat]
+    OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv-hf/bin/python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat
+
+That is the command for the published evidence in reports/hf. --out is required, and reports/hf is written only with
+--repeat, so that every published file records its repeat run; any other run (with or without --only
+basira|rasid|sanad) writes to another --out directory, and run() refuses otherwise (EVIDENCE_OUT) before any model loads.
 
 For each system the current component runs through the harness of mizan/hf_evaluation.py and is gated before any
 model result is kept: BASIRA's shipped descriptor against reports/evaluation/basira.json, before DINOv2 runs; RASID's
@@ -36,6 +40,8 @@ QUICK_SIZES = {"basira": {"draws": 3, "sizes": (24,), "pools": (60, 60, 20)},
                "rasid": {"days": 2}, "sanad": {"n_docs": 10, "seed": 2024}}
 SANAD_PROTOCOL_SIZE = (120, 2024)   # (n_docs, seed): the only SANAD results that are written
 SHIPPED = {"basira": "reports/evaluation/basira.json", "rasid": "reports/evaluation/rasid.json"}
+EVIDENCE_DIR = ROOT / "reports" / "hf"   # the published results: written only by a run with repeat
+EVIDENCE_COMMAND = "python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat"
 
 DETERMINISM = {"torch_seed": 0, "deterministic_algorithms": "torch.use_deterministic_algorithms(True, warn_only=True)",
                "torch_threads": 8, "forward_passes": "torch.inference_mode()",
@@ -286,6 +292,7 @@ def _write(out, records):
     try:
         for kind, blob in data.items():
             fd, name = tempfile.mkstemp(dir=out, prefix=f".{kind}.", suffix=".tmp"); staged.append((name, out / f"{kind}.json"))
+            os.fchmod(fd, 0o644)   # mkstemp creates owner-only files; the rename keeps the mode
             with os.fdopen(fd, "wb") as f:
                 f.write(blob); f.flush(); os.fsync(f.fileno())
         for name, path in staged:
@@ -299,8 +306,12 @@ def _write(out, records):
 def run(models_root, out, only=None, repeat=False, *, loaders=None, quick=False) -> dict:
     """Evaluate the requested systems (all three by default); with repeat, run each again and record the comparison.
     loaders maps a system to a function of models_root returning its feature function, forecaster or embedder
-    (default: the verified loaders of mizan.models). Returns the records; writes them unless quick."""
+    (default: the verified loaders of mizan.models). Returns the records; writes them unless quick. The evidence
+    directory reports/hf is refused without repeat (EVIDENCE_OUT), before anything runs."""
     require(only is None or only in SYSTEMS, "ONLY", "Expected basira, rasid or sanad")
+    require(repeat or Path(out).resolve() != EVIDENCE_DIR.resolve(), "EVIDENCE_OUT",
+            "reports/hf holds the published evidence and is written only with --repeat, so that every file there records "
+            f"its repeat run ({EVIDENCE_COMMAND}); write any other run to another --out directory")
     say = _quiet if quick else _say
     sizes = QUICK_SIZES if quick else FULL_SIZES
     records = {}
@@ -350,11 +361,14 @@ def summary(records):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
+                                epilog=f"Published evidence: OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 {EVIDENCE_COMMAND}")
     p.add_argument("--models", default="var/hf", help="verified checkpoint cache (python -m mizan hf fetch)")
-    p.add_argument("--out", default="reports/hf")
-    p.add_argument("--only", choices=SYSTEMS)
-    p.add_argument("--repeat", action="store_true", help="run each system twice and record whether the results are identical")
+    p.add_argument("--out", required=True,
+                   help="output directory (required); reports/hf, the published evidence, is written only with --repeat")
+    p.add_argument("--only", choices=SYSTEMS, help="evaluate one system only")
+    p.add_argument("--repeat", action="store_true",
+                   help="run each system twice and record whether the results are identical (required for --out reports/hf)")
     args = p.parse_args(argv)
     try:
         records = run(args.models, args.out, args.only, args.repeat)
