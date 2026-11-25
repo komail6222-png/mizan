@@ -104,7 +104,7 @@ def hf_facts(basira, rasid, sanad):
     The block's fixed wording is checked against the files here; a statement that no longer holds stops the build."""
     for name, r in (("basira", basira), ("rasid", rasid), ("sanad", sanad)):
         if not (r["gate"]["passed"] and r["repeat_run"]["identical"] and r["fixture_only"]):
-            fail(f"reports/hf/{name}.json: the block says every gate passed, every run repeated identically and all data is generated")
+            fail(f"reports/hf/{name}.json: the block publishes only runs on generated data whose gate passed and whose repeat run was identical")
     # BASIRA: the frozen test, then the repeated-calibration study the block calls "roughly equal" within its stated precision.
     side = {k: basira[k]["frozen_test"] for k in ("baseline", "model")}
     intact = {k: sum(row["condition"] == "intact" for row in t["rows"]) for k, t in side.items()}

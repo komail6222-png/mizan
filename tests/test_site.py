@@ -68,8 +68,8 @@ class FoundationModelFactsTests(unittest.TestCase):
             "Chronos error no longer lower": (change("rasid", ["model", "forecast", "chronos_mae_kw"], 2.9), "lower load error"),
             "Chronos pinball no longer worse": (change("rasid", ["model", "forecast", "chronos_mean_pinball"], 0.7), "score worse"),
             "risk-weighted Chronos plan no longer resolved costlier": (change("rasid", ["model", "paired_comparisons", 2, "mean_daily_difference_95ci"], [-0.1, 1.6]), "risk-weighted"),
-            "a gate that did not pass": (change("rasid", ["gate", "passed"], False), "rasid.json: .*every gate passed"),
-            "a repeat run that was not identical": (change("sanad", ["repeat_run", "identical"], False), "sanad.json: .*repeated identically"),
+            "a gate that did not pass": (change("rasid", ["gate", "passed"], False), "rasid.json: .*gate passed"),
+            "a repeat run that was not identical": (change("sanad", ["repeat_run", "identical"], False), "sanad.json: .*repeat run was identical"),
         }
         for name, (changed, message) in cases.items():
             with self.subTest(name), self.assertRaisesRegex(SystemExit, message):

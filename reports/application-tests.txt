@@ -6,8 +6,8 @@
 # chronos-forecasting and MIZAN_HF_MODELS. They were run in the optional .venv-hf (requirements-hf.txt: torch 2.15.0+cpu,
 # transformers 4.57.6, chronos-forecasting 2.3.2) against the verified checkpoints:
 #   MIZAN_HF_MODELS=var/hf .venv-hf/bin/python -m unittest tests.test_hf_models.LoaderTests -v
-#   -> 4 tests in 1.654s, OK: test_chronos_quantiles, test_dinov2_grid, test_e5_normalised, test_identity_matches_pin.
-# The same suite on Python 3.13.18 (uv, SQLite 3.53.1, the same pins): 159 tests in 38.394s, OK (skipped=4, the same 4).
+#   -> 4 tests in 3.079s, OK: test_chronos_quantiles, test_dinov2_grid, test_e5_normalised, test_identity_matches_pin.
+# The same suite on Python 3.13.18 (uv, SQLite 3.53.1, the same pins): 159 tests in 66.681s, OK (skipped=4, the same 4).
 # MCP conformance used the official mcp client 2.3.0.
 # Previous record (3.0 local verification run, 21 November 2026): 102 tests, all passed; see reports/local-verification.md.
 # Command: python -m unittest discover -s tests -v
@@ -173,6 +173,6 @@ test_rewritten_local_history_is_detected (test_witness.WitnessTests.test_rewritt
 test_witness_refuses_malformed_forked_and_foreign_batches (test_witness.WitnessTests.test_witness_refuses_malformed_forked_and_foreign_batches) ... ok
 
 ----------------------------------------------------------------------
-Ran 159 tests in 35.661s
+Ran 159 tests in 69.143s
 
 OK (skipped=4)

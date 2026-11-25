@@ -22,7 +22,7 @@ Unreleased (prepared 25 November 2026) · Builds on 3.0. The version strings in 
 
 **Verified import.** Every checkpoint is imported at a fixed revision with Git blob and LFS checks, a weight SHA-256 and a signed local manifest (`python -m mizan hf fetch`). The loaders in `mizan/models.py` verify the import before loading anything and refuse an unverified checkpoint. Each report records the repository, revision, weight SHA-256 and two manifest digests: `manifest_object` (the signed manifest object, reproducible by anyone re-importing the pin) and `manifest_sha256` (this machine's signed import file).
 
-**Fidelity gate.** Before any model result is kept, the current component runs through the new harness and must reproduce the shipped results. A mismatch stops the run with exit code 2 and writes nothing.
+**Fidelity gate.** Before any model result is kept, the current component runs through the new harness and must reproduce its results: the shipped ones for BASIRA and RASID, and its own across two runs for SANAD, which has no shipped retrieval figures. A mismatch stops the run with exit code 2 and writes nothing.
 
 | System | Gate | Checks | Mismatches |
 |---|---|---|---|
