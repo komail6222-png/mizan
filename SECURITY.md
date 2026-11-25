@@ -6,8 +6,8 @@ MIZAN is a research and portfolio project. It runs locally on generated data and
 
 | Version | Supported |
 |---|---|
-| 3.0.x | yes |
-| earlier | no |
+| 3.1.x | yes |
+| 3.0.x and earlier | no (3.1 changes no engine, store or verification code; upgrade) |
 
 ## Trust boundaries
 

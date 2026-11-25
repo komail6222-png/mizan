@@ -1,6 +1,6 @@
 # MIZAN 3.1 | Foundation models, measured on the held-out protocol
 
-Unreleased (prepared 25 November 2026) · Builds on 3.0. The version strings in `pyproject.toml` and `CITATION.cff`, the tag and the GitHub release change together when the owner approves publication.
+25 November 2026 · Builds on 3.0.
 
 3.0 pinned three Hugging Face checkpoints and could import them with a verified, signed manifest, but none of its reported numbers used them. 3.1 asks one question per system: **does a pretrained foundation model do better than MIZAN's current component, on the same held-out data and the same metrics?** Each model replaces one component, frozen, inside the existing evaluation protocol, and the answer is published whichever way it goes. It is mixed: no model is better on every measure, and most differences are not resolved by this protocol. Of the two economic comparisons with the current forecaster, the risk-neutral one is not resolved and the risk-weighted one is resolved against Chronos (+1.060 per day, 95% interval +0.328 to +1.641), a result shaped by the fixed rule that turns Chronos's quantiles into planning scenarios as well as by the forecaster. The deployed engines, profiles, signed exhibit and pinned key are unchanged.
 

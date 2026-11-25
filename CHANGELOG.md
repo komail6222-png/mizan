@@ -1,10 +1,10 @@
 # Changelog
 
-All notable changes to MIZAN. Detailed notes and evidence for each release are in `docs/`. Every release so far is dated 21 November 2026; 3.1.0 is not released yet.
+All notable changes to MIZAN. Detailed notes and evidence for each release are in `docs/`. Releases up to 3.0.0 are dated 21 November 2026; 3.1.0 is dated 25 November 2026.
 
-## [3.1.0] (unreleased)
+## [3.1.0] - 2026-11-25
 
-Foundation models measured on the held-out protocol, and the redesigned interface. Details: [`docs/RELEASE_3.1.md`](docs/RELEASE_3.1.md). The version strings, tag and release follow when publication is approved.
+Foundation models measured on the held-out protocol, and the redesigned interface. Details: [`docs/RELEASE_3.1.md`](docs/RELEASE_3.1.md).
 
 ### Added
 - **Hugging Face evaluation** (`scripts/evaluate_hf.py`, `mizan/hf_evaluation.py`, results in `reports/hf/`). DINOv2-small, Chronos-Bolt-tiny and multilingual-E5-small each replace one component, frozen, on the same held-out items, origins and metrics. A fidelity gate first re-runs the current component in the new harness (368, 253 and 30 checks, 0 mismatches), and each system was evaluated twice with identical results. BASIRA: 1/40 false alerts against 8/40 on the frozen test (one calibration bank), 40/40 defects for both; over 400 calibration banks per size the mean false-alert rates are roughly equal, as split conformal predicts for any descriptor. RASID: load MAE 2.572 against 2.794 kW, a paired daily difference of −0.221 kW (95% interval −0.698 to +0.118, not resolved), and the pinball-loss and CRPS differences are not resolved either; 80% coverage 65.1% against 74.7%, resolved; with the same risk-neutral planner −0.135 per day (95% interval −0.507 to +0.154, not resolved); the risk-weighted Chronos policy costs 1.060 more per day than the ridge one (interval excludes zero), a result the fixed scenario rule shapes as well as the forecaster. SANAD: recall@1 80.5% against 96.9% with the engine's bilingual query, where the lexical retriever is near its ceiling; 77.7% against 61.1% with the English label alone and 72.5% against 60.2% with the Arabic label alone, a gain that is entirely cross-lingual (in the query's own language E5 is lower: 85.8% against 100.0% in English, 77.5% against 94.0% in Arabic); no interval is reported for SANAD. The deployed engines are unchanged.
