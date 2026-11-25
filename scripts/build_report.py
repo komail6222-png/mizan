@@ -1,10 +1,13 @@
-"""Build reports/evaluation/index.html, a self-contained visual summary of the evaluation JSON files.
+"""Build the evaluation report: reports/evaluation/index.html, a self-contained visual summary of the evaluation JSON
+files, and reports/evaluation/models.html, the comparison of the pinned Hugging Face models with the current components
+(from reports/hf/, when that folder exists beside the source folder).
 
-The page embeds only the numbers it plots (no fixtures or images), makes no network requests and works offline.
-Rebuild after `python scripts/evaluate.py`: python scripts/build_report.py
+The pages embed only the numbers they show (no fixtures or images), make no network requests and work offline.
+Rebuild after `python scripts/evaluate.py` or `python scripts/derive_hf_intervals.py`: python scripts/build_report.py
 """
 import argparse
 import base64
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -35,12 +38,28 @@ def safety_summary(path):
 HF_POLICY = {"candidate": "ridge risk-weighted", "candidate_risk_neutral": "ridge risk-neutral", "seasonal_naive": "seasonal baseline",
              "chronos": "Chronos risk-weighted", "chronos_risk_neutral": "Chronos risk-neutral"}
 SANAD_METRICS = ("recall_at_1", "recall_at_3", "mrr_at_4")  # embedded as arrays in this order
+SANAD_BY_LANGUAGE = (("en", "en"), ("en", "ar"), ("ar", "ar"), ("ar", "en"))  # (query label, datasheet language), embedded in this order
+ACCURACY = ("load_mae", "mean_pinball", "truncated_crps", "coverage_80_load")  # chronos_minus_ridge_* in reports/hf/rasid_intervals.json
+
+
+def fail(message):
+    raise SystemExit("build_report: " + message)
+
+
+def derived_intervals(folder, *pairs):
+    """reports/hf/rasid_intervals.json, refused unless it was derived from each (published path, local file) given."""
+    intervals = json.loads((Path(folder) / "rasid_intervals.json").read_bytes())
+    for published, local in pairs:
+        if intervals["source"]["files"].get(published) != hashlib.sha256(Path(local).read_bytes()).hexdigest():
+            fail(f"rasid_intervals.json was not derived from this {published}; run python scripts/derive_hf_intervals.py")
+    return intervals, {c["comparison"]: c for c in intervals["comparisons"]}
 
 
 def hf_summary(folder):
-    """The figures the Hugging Face section shows, read from reports/hf/: never the per-item, per-day or gate records."""
+    """The figures the models page shows, read from reports/hf/: never the per-item, per-day or gate records."""
     load = lambda k: json.loads((Path(folder) / f"{k}.json").read_bytes())
     sanad, basira, rasid = load("sanad"), load("basira"), load("rasid")
+    intervals, derived = derived_intervals(folder, ("reports/hf/rasid.json", Path(folder) / "rasid.json"))
     run = lambda r: {"repo": r["identity"]["repo"], "revision": r["identity"]["revision"][:12], "gate": r["gate"]["passed"],
                      "identical": r["repeat_run"]["identical"]}
 
@@ -57,18 +76,29 @@ def hf_summary(folder):
     qb, qm = rasid["baseline"]["decision_quality"], rasid["model"]["decision_quality"]
     pairs = rasid["model"]["paired_comparisons"]
     ranks = lambda side: {kind: [side["metrics"][kind]["all"][m] for m in SANAD_METRICS] for kind in ("bilingual", "en", "ar")}
+    interval = lambda name: {"d": derived[name]["mean_difference"], "ci": derived[name]["interval_95"]}
+    planner = intervals["risk_weighted_planner"]
     # The study's own precision for each long-run rate ("about ±0.35 percentage points"); a missing statement stops the build.
     precision = float(re.search(r"±([0-9.]+) percentage points", basira["baseline"]["calibration_study"]["scope"]).group(1))
     return {
         "fixture_only": all(r["fixture_only"] for r in (sanad, basira, rasid)),
+        "environment": {k: rasid["environment"][k] for k in ("python", "numpy", "scipy", "torch")},
         "basira": {**run(basira), "alpha": basira["settings"]["alpha"], "draws": basira["settings"]["draws"], "precision_points": precision,
                    "baseline": vision(basira["baseline"]), "model": vision(basira["model"])},
         "rasid": {**run(rasid), "days": rasid["model"]["target_days"], "levels": fm["shared_levels"], "pv_clipped": fm["pv_values_clipped"],
+                  "chronos_levels": rasid["settings"]["chronos_levels"], "pairing": rasid["settings"]["pairing"],
                   "forecast": {"mae": [fb["ridge_mae_kw"], fm["chronos_mae_kw"]], "pinball": [fb["ridge_mean_pinball"], fm["chronos_mean_pinball"]],
                                "crps": [fb["ridge_truncated_crps"], fm["chronos_truncated_crps"]],
                                "coverage": [fb["ridge_coverage_80_load"], fm["chronos_coverage_80_load"]]},
+                  # Chronos minus ridge per day, with the paired 95% interval derived from the same per-origin values
+                  "accuracy": [{"k": k, **interval("chronos_minus_ridge_" + k)} for k in ACCURACY],
                   "cost": {"neutral": [qb["candidate_risk_neutral"]["total_cost"], qm["chronos_risk_neutral"]["total_cost"]],
                            "weighted": [qb["candidate"]["total_cost"], qm["chronos"]["total_cost"]]},
+                  "tail": {"cvar": [qb["candidate"]["mean_worst_10pct_days"], qm["chronos"]["mean_worst_10pct_days"]],
+                           "worst": [qb["candidate"]["worst_day_cost"], qm["chronos"]["worst_day_cost"]]},
+                  "premium": {"ridge": interval("candidate_minus_candidate_risk_neutral_cost"), "chronos": interval("chronos_minus_chronos_risk_neutral_cost")},
+                  "planner": {"risk": planner["risk_weight"], "beta": planner["cvar_beta"], "weights": planner["chronos_scenario_weights"],
+                              "costliest": planner["chronos_cvar_is_costliest_scenario"]},
                   "verified": min(q["verified_feasible_plans"] for q in [*qb.values(), *qm.values()]), "bootstrap": pairs[0]["bootstrap"],
                   "shipped_gap": max(rasid["gate"]["total_cost_relative_difference"][k] for k in ("candidate", "candidate_risk_neutral")),
                   "tolerance": rasid["settings"]["gate_tolerances"]["candidate_totals_relative"],
@@ -76,11 +106,20 @@ def hf_summary(folder):
                               **{k: c[k] for k in ("policy", "reference", "mean_daily_difference", "mean_daily_difference_95ci", "days_cheaper", "days_more_expensive")}}
                              for c in pairs]},
         "sanad": {**run(sanad), "queries": sanad["model"]["queries"], "unit": sanad["model"]["queries_unit"], "documents": sanad["model"]["documents"],
-                  "lexical": ranks(sanad["baseline"]), "e5": ranks(sanad["model"]), "notes": sanad["notes"]},
+                  "by_language": sanad["model"]["queries_by_language"],
+                  "lexical": ranks(sanad["baseline"]), "e5": ranks(sanad["model"]), "notes": sanad["notes"],
+                  # recall@1 by (query label, datasheet language)
+                  "lang": {name: [sanad[side]["metrics"][q][d]["recall_at_1"] for q, d in SANAD_BY_LANGUAGE] for name, side in (("lexical", "baseline"), ("e5", "model"))}},
     }
 
 
-def summarize(folder, hf_source=None):
+def hf_folder(folder, hf_source=None):
+    """The Hugging Face evidence: by default the source folder's sibling hf/, like safety/; None when it is absent."""
+    hf = Path(hf_source) if hf_source else Path(folder).parent / "hf"
+    return hf if hf.is_dir() else None
+
+
+def summarize(folder):
     load = lambda k: json.loads((Path(folder) / f"{k}.json").read_bytes())
     sanad, basira, rasid = load("sanad"), load("basira"), load("rasid")
     sets = [("Original bilingual grammar set", sanad, "naive_numeric_correct", "Numeric-only rule"),
@@ -102,26 +141,31 @@ def summarize(folder, hf_source=None):
                   "paired": [{"label": f"{SHORT[c['policy']]} − {SHORT[c['reference']].lower()}", "full": f"{LABELS[c['policy']]} minus {LABELS[c['reference']].lower()}", **c}
                              for c in rasid["paired_comparisons"]]},
     }
-    hf_source = Path(hf_source) if hf_source else Path(folder).parent / "hf"  # a sibling, like safety/
-    if hf_source.is_dir():
-        summary["hf"] = hf_summary(hf_source)
+    hf = hf_folder(folder)
+    if hf and (hf / "rasid_intervals.json").exists():  # the paired interval of the ridge and seasonal-naive errors
+        _, derived = derived_intervals(hf, ("reports/evaluation/rasid.json", Path(folder) / "rasid.json"))
+        c = derived["ridge_minus_seasonal_naive_load_mae"]
+        summary["rasid"]["mae_gap"] = {"d": c["mean_difference"], "ci": c["interval_95"]}
     return summary
 
 
-PAGE = r"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MIZAN | Evaluation report</title>
-<style>
+def models_summary(folder, hf_source=None):
+    """The models page's data, or None when there is no Hugging Face evidence."""
+    hf = hf_folder(folder, hf_source)
+    return {"hf": hf_summary(hf)} if hf else None
+
+
+# Readex Pro: Copyright 2018 The Readex Pro Project Authors (https://github.com/ThomasJockin/readexpro), with Reserved Font
+# Name "RevReading Lexend". Licensed under the SIL Open Font License, Version 1.1 (mizan/web/fonts/OFL-ReadexPro.txt).
+STYLE = r"""<style>
+/* Readex Pro (Latin subset): Copyright 2018 The Readex Pro Project Authors (https://github.com/ThomasJockin/readexpro), with Reserved Font Name "RevReading Lexend". Licensed under the SIL Open Font License, Version 1.1 (OFL-1.1); full text in OFL-ReadexPro.txt. */
 @font-face{font-family:"Readex";src:url(data:font/woff2;base64,%%FONT_WOFF2%%) format("woff2");font-weight:160 700;font-display:swap}
 .viz-root{color-scheme:light;--surface-1:#f5f7f8;--page:#e6eaee;--text-primary:#0e1c36;--text-secondary:#4b586f;--muted:#6b7790;
-  --grid:#dbe1e7;--axis:#c8d0d9;--border:rgba(14,28,54,.13);--series-1:#0e1c36;--series-2:#9c6b1f;--good:#256b5b;--accent:#855a17}
+  --grid:#dbe1e7;--axis:#c8d0d9;--border:rgba(14,28,54,.13);--series-1:#0e1c36;--series-2:#9c6b1f;--good:#256b5b;--accent:#855a17;--focus:#8a5f1c}
 @media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .viz-root{color-scheme:dark;--surface-1:#121e33;--page:#0b1424;
-  --text-primary:#eef2f7;--text-secondary:#aab5c6;--grid:#1f2c42;--axis:#31415c;--border:rgba(255,255,255,.10);--series-1:#9fb8e8;--series-2:#ddb56b;--good:#6fc2ad;--accent:#ddb56b}}
+  --text-primary:#eef2f7;--text-secondary:#aab5c6;--grid:#1f2c42;--axis:#31415c;--border:rgba(255,255,255,.10);--series-1:#9fb8e8;--series-2:#ddb56b;--good:#6fc2ad;--accent:#ddb56b;--focus:#ddb56b}}
 :root[data-theme="dark"] .viz-root{color-scheme:dark;--surface-1:#121e33;--page:#0b1424;--text-primary:#eef2f7;--text-secondary:#aab5c6;
-  --grid:#1f2c42;--axis:#31415c;--border:rgba(255,255,255,.10);--series-1:#9fb8e8;--series-2:#ddb56b;--good:#6fc2ad;--accent:#ddb56b}
+  --grid:#1f2c42;--axis:#31415c;--border:rgba(255,255,255,.10);--series-1:#9fb8e8;--series-2:#ddb56b;--good:#6fc2ad;--accent:#ddb56b;--focus:#ddb56b}
 *{box-sizing:border-box}
 body{margin:0}
 .viz-root{background:var(--page);color:var(--text-primary);font:350 15.5px/1.55 "Readex",system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
@@ -131,7 +175,7 @@ body{margin:0}
 main{max-width:980px;margin:0 auto;padding:34px 20px 60px}
 h1{font-size:clamp(30px,4.6vw,46px);line-height:1.05;letter-spacing:-.025em;font-weight:600;margin:6px 0 10px}h2{font-size:22px;font-weight:600;letter-spacing:-.01em;margin:48px 0 4px}h3{font-size:16px;font-weight:600;margin:0 0 2px}
 .kicker{font-size:14.5px;color:var(--accent);font-weight:550}
-.lede{color:var(--text-secondary);margin:0 0 18px;max-width:72ch}
+.lede{color:var(--text-secondary);margin:0 0 18px;max-width:72ch}.lede a{color:var(--text-primary)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:20px 0}
 .tile,.card{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:18px}
 .tile .label{font-size:13px;color:var(--text-secondary)}.tile .value{font-size:30px;font-weight:560;letter-spacing:-.02em;margin:2px 0;font-variant-numeric:tabular-nums}
@@ -149,15 +193,43 @@ th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--grid)}td.n,t
 .tip strong{display:block;font-size:15px}.tip span{color:var(--text-secondary)}
 .foot{color:var(--text-secondary);font-size:13px;margin-top:36px}
 svg text{fill:var(--text-secondary);font:12px "Readex",system-ui,-apple-system,"Segoe UI",sans-serif}
-code{font-size:.9em}a:focus-visible,[tabindex]:focus-visible{outline:3px solid #c48a2c;outline-offset:2px}
+code{font-size:.9em}a:focus-visible,[tabindex]:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 svg .strong{fill:var(--text-primary);font-weight:600}
 .hit{fill:transparent;cursor:default;outline:none}.mark.on{filter:brightness(1.15)}svg text{pointer-events:none}
 .card p.note{margin:10px 0 0;color:var(--text-secondary);font-size:13.5px}.card h3.gap{margin-top:24px}table.fit{min-width:0}#hf-section td.n{white-space:nowrap}
-</style>
+</style>"""
+
+HELPERS = r"""const D=JSON.parse(document.getElementById("data").textContent);
+const NS="http://www.w3.org/2000/svg";
+const fmt=(v,d=0)=>v.toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}).replace("-","−");
+const pct=(v,d=1)=>fmt(100*v,d)+"%";
+function el(tag,attrs={},parent){const e=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);if(parent)parent.append(e);return e}
+function text(parent,x,y,s,attrs={}){const t=el("text",{x,y,...attrs},parent);t.textContent=s;return t}
+function h(tag,s,cls){const e=document.createElement(tag);if(s!==undefined)e.textContent=s;if(cls)e.className=cls;return e}
+function table(id,head,rows,numeric){const t=document.getElementById(id);t.replaceChildren();const tr=h("tr");
+  head.forEach((c,i)=>{const th=h("th",c);if(numeric[i])th.className="n";tr.append(th)});t.append(tr);
+  rows.forEach(r=>{const row=h("tr");r.forEach((c,i)=>{const td=h("td",c);if(numeric[i])td.className="n";row.append(td)});t.append(row)})}
+const frac=v=>{const[a,b]=String(v).split("/");return b?Number(a)/Number(b):Number(a)};"""
+
+HEAD = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>%%TITLE%%</title>
+%%STYLE%%
 </head>
 <body>
-<div class="viz-root"><header class="bar"><div><a class="brand" href="https://komail6222-png.github.io/mizan/">MIZAN</a><a class="back" href="https://komail6222-png.github.io/mizan/">What is MIZAN?</a></div></header><main>
-<div class="kicker">Release 3.0, evaluated on generated fixtures</div>
+<div class="viz-root"><header class="bar"><div><a class="brand" href="https://komail6222-png.github.io/mizan/">MIZAN</a><a class="back" href="%%BACK_HREF%%">%%BACK%%</a></div></header><main>
+"""
+
+MODELS_LINK = r"""<section id="models-link">
+<h2>Foundation models from Hugging Face</h2>
+<p class="lede">Pinned Hugging Face checkpoints, each measured in place of the SANAD retriever, the BASIRA descriptor or the RASID forecaster on the same generated data, with paired intervals for the forecast comparisons, have their own page: <a href="models.html">Foundation models from Hugging Face</a>.</p>
+</section>
+"""
+
+PAGE = r"""<div class="kicker">Release 3.0 results, evaluated on generated fixtures</div>
 <h1>Evaluation report</h1>
 <p class="lede">What the three systems decide on held-out generated data, what the statistics promise, and where the evidence is still thin. Every number on this page comes from the JSON files under <code>reports/</code>.</p>
 <div class="tiles" id="tiles"></div>
@@ -190,33 +262,12 @@ svg .strong{fill:var(--text-primary);font-weight:600}
 <p class="lede">Generated inputs and seeded schedules check relations that must hold for every case. Each suite is also run against deliberately broken versions of the system; a suite that cannot catch those proves nothing. Source: <code>reports/safety/safety.json</code>.</p>
 <div class="card"><div class="scroll"><table id="safety"></table></div></div>
 </section>
-<section id="hf-section" hidden>
-<h2>Foundation models from Hugging Face</h2>
-<p class="lede" id="hf-lede"></p>
-<div class="card"><h3>BASIRA: inspection descriptor</h3><p class="sub" id="hf-basira-sub"></p>
-<div class="scroll"><table class="fit" id="hf-basira"></table></div><p class="note" id="hf-basira-note"></p></div>
-<div class="card"><h3>RASID: load and solar forecaster</h3><p class="sub" id="hf-rasid-sub"></p>
-<div class="scroll"><table class="fit" id="hf-rasid"></table></div><p class="note" id="hf-rasid-note"></p>
-<h3 class="gap">Paired differences in mean daily cost</h3><p class="sub" id="hf-paired-sub"></p>
-<div class="scroll"><table id="hf-paired"></table></div><p class="note" id="hf-paired-note"></p></div>
-<div class="card"><h3>SANAD: evidence retriever</h3><p class="sub" id="hf-sanad-sub"></p>
-<div class="scroll"><table class="fit" id="hf-sanad"></table></div><p class="note" id="hf-sanad-note"></p></div>
-</section>
-<p class="foot" id="foot"></p>
+%%MODELS_LINK%%<p class="foot" id="foot"></p>
 </main></div>
 <script id="data" type="application/json">%%DATA%%</script>
 <script>
 "use strict";
-const D=JSON.parse(document.getElementById("data").textContent);
-const NS="http://www.w3.org/2000/svg";
-const fmt=(v,d=0)=>v.toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}).replace("-","\u2212");
-const pct=(v,d=1)=>fmt(100*v,d)+"%";
-function el(tag,attrs={},parent){const e=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);if(parent)parent.append(e);return e}
-function text(parent,x,y,s,attrs={}){const t=el("text",{x,y,...attrs},parent);t.textContent=s;return t}
-function h(tag,s,cls){const e=document.createElement(tag);if(s!==undefined)e.textContent=s;if(cls)e.className=cls;return e}
-function table(id,head,rows,numeric){const t=document.getElementById(id);t.replaceChildren();const tr=h("tr");
-  head.forEach((c,i)=>{const th=h("th",c);if(numeric[i])th.className="n";tr.append(th)});t.append(tr);
-  rows.forEach(r=>{const row=h("tr");r.forEach((c,i)=>{const td=h("td",c);if(numeric[i])td.className="n";row.append(td)});t.append(row)})}
+%%HELPERS%%
 function tooltip(box){let tip=box.querySelector(".tip");if(!tip){tip=h("div",undefined,"tip");box.append(tip)}
   return{show(ev,value,label){tip.replaceChildren(h("strong",value),h("span",label));const r=box.getBoundingClientRect();
     let x=ev.clientX-r.left+12,y=ev.clientY-r.top+12;tip.style.opacity=1;const w=tip.offsetWidth;if(x+w>r.width)x=Math.max(0,ev.clientX-r.left-w-12);
@@ -230,7 +281,6 @@ function bar(s,x,y,w,hgt,color){ // 4px rounded data-end, square at the baseline
   const r=Math.min(4,w,hgt/2);return el("path",{d:`M${x},${y}h${Math.max(0,w-r)}a${r},${r} 0 0 1 ${r},${r}v${hgt-2*r}a${r},${r} 0 0 1 -${r},${r}h-${Math.max(0,w-r)}z`,fill:color,class:"mark"},s)}
 function vbar(parent,x,top,w,base,color){const r=Math.min(4,(base-top),w/2); // rounded data-end, square baseline
   return el("path",{d:`M${x},${base}V${top+r}a${r},${r} 0 0 1 ${r},-${r}h${w-2*r}a${r},${r} 0 0 1 ${r},${r}V${base}z`,fill:color,class:"mark"},parent)}
-const frac=v=>{const[a,b]=String(v).split("/");return b?Number(a)/Number(b):Number(a)};
 function ticks(max,n=4){const step=Math.pow(10,Math.floor(Math.log10(max/n)));const m=[1,2,2.5,5,10].find(k=>max/(k*step)<=n)*step;const out=[];for(let v=0;v<=max+1e-9;v+=m)out.push(+v.toFixed(10));return out}
 
 function tiles(){const B=D.basira.shipped,S=D.sanad,R=D.rasid,neutral=R.paired.find(p=>p.policy==="candidate_risk_neutral"&&p.reference==="seasonal_naive");
@@ -304,66 +354,128 @@ function paired(){const C=D.rasid.paired,box=document.getElementById("paired"),t
   table("rasid-table",["Policy","Total cost","Regret","Share captured","Worst day","Worst 10% days","Verified plans"],
     D.rasid.policies.map(p=>[p.label,fmt(p.total_cost,2),fmt(p.regret_vs_perfect_foresight,2),pct(p.share_of_achievable_battery_value),fmt(p.worst_day_cost,2),fmt(p.mean_worst_10pct_days,2),String(p.verified_feasible_plans)]),[0,1,1,1,1,1,1])}
 
-function ledes(){const R=D.rasid;document.getElementById("rasid-lede").textContent=`The ridge forecast cuts load error from ${fmt(R.mae[1],3)} to ${fmt(R.mae[0],3)} kW over ${R.days} rolling days. Release 2.1 reported that the planner nevertheless cost more than the seasonal baseline. That comparison mixed two effects: the forecast and the risk weight. Separating them shows what each one buys.`;
-  const e=D.environment;document.getElementById("foot").textContent=`Generated from ${["evaluation",D.safety&&"safety",D.hf&&"hf"].filter(Boolean).map(s=>"reports/"+s).join(", ")} · evaluation run: Python ${e.python||"?"} · NumPy ${e.numpy||"?"} · SciPy ${e.scipy||"?"} · All inputs are generated fixtures; costs are illustrative units. Rebuild with python scripts/build_report.py.`}
+function ledes(){const R=D.rasid,g=R.mae_gap,sg=v=>(v>0?"+":"")+fmt(v,3);
+  document.getElementById("rasid-lede").textContent=`The ridge forecast's mean load error is ${fmt(R.mae[0],3)} kW against ${fmt(R.mae[1],3)} kW for the seasonal baseline over ${R.days} rolling days${g?`; per day the difference is ${sg(g.d)} kW (95% interval ${sg(g.ci[0])} to ${sg(g.ci[1])}), ${g.ci[0]>0||g.ci[1]<0?"resolved":"not resolved"}`:""}. Release 2.1 reported that the planner cost more than the seasonal baseline. That comparison mixed two effects: the forecast and the risk weight. Separating them shows what each one buys.`;
+  const e=D.environment;document.getElementById("foot").textContent=`Generated from ${["evaluation",D.safety&&"safety",R.mae_gap&&"hf/rasid_intervals.json"].filter(Boolean).map(s=>"reports/"+s).join(", ")} · evaluation run: Python ${e.python||"?"} · NumPy ${e.numpy||"?"} · SciPy ${e.scipy||"?"} · All inputs are generated fixtures; costs are illustrative units. Rebuild with python scripts/build_report.py.`}
 function safety(){if(!D.safety)return;document.getElementById("safety-section").hidden=false;
   table("safety",["Suite","What ran","Violations","Broken versions"],D.safety.map(r=>[r.suite,r.checks,String(r.violations),r.mutants]),[0,0,1,0])}
-function models(){const F=D.hf;if(!F)return;document.getElementById("hf-section").hidden=false;
-  const put=(id,s)=>{document.getElementById(id).textContent=s},name=r=>r.repo.split("/")[1],sgn=v=>(v>0?"+":"")+fmt(v,3),
-    list=xs=>xs.length<3?xs.join(" and "):xs.slice(0,-1).join(", ")+" and "+xs[xs.length-1],ident=r=>`${r.repo} (revision ${r.revision})`,
-    off=[F.basira,F.rasid,F.sanad].filter(r=>!(r.gate&&r.identical)).map(r=>r.repo);
-  put("hf-lede",`Three pinned checkpoints, each used frozen in place of one component and scored on the same items, seeds, origins and metrics as that component. ${F.fixture_only?"All inputs are generated fixtures. ":""}${off.length?`The fidelity gate or repeat run failed for ${list(off)}.`:"Every run passed its fidelity gate, which re-checks the current component in the new harness, and repeated identically."} Source: reports/hf/*.json.`);
-  const B=F.basira,b=[B.baseline,B.model],s0=B.baseline.shipped,t=B.baseline.frozen_test,a=pct(frac(B.alpha),0),odds=b.map(s=>pct(s.shipped.p_worse));
-  put("hf-basira-sub",`The shipped descriptor next to ${ident(B)}, on the same ${t.intact+t.defects} frozen items and calibration pools, seeds and draws.`);
-  table("hf-basira",["Measure","Shipped descriptor",name(B)],[["Defects detected, frozen test",...b.map(s=>`${s.frozen_test.detected} / ${s.frozen_test.defects}`)],
-    ["False alerts on intact rings, frozen test",...b.map(s=>`${s.frozen_test.false_alerts} / ${s.frozen_test.intact}`)],
-    [`Shipped bank (m = ${s0.m}): long-run false-alert rate`,...b.map(s=>pct(s.shipped.rate))],
-    ["How often a bank this bad or worse occurs",...odds],
-    ...B.baseline.study.map((r,i)=>[`Study, m = ${r.m}: mean false alerts / banks above ${a}`,...b.map(s=>`${pct(s.study[i].false_alert)} / ${pct(s.study[i].share_above)}`)])],[0,1,1]);
-  const rows=B.baseline.study.map((r,i)=>[r,B.model.study[i]]),gap=Math.max(...rows.map(([x,y])=>Math.abs(x.false_alert-y.false_alert))),
-    at=f=>rows.filter(([x,y])=>f(y.share_above,x.share_above)).map(([x])=>x.m),
-    share=[[at((y,x)=>y<x),"lower"],[at((y,x)=>y>x),"higher"]].filter(([m])=>m.length).map(([m,w])=>`${w} at m = ${list(m)}`),det=Math.min(...b.map(s=>s.detection)),near=100*gap<=B.precision_points;
-  put("hf-basira-note",`The frozen test and the long-run rate rest on one bank of ${s0.m} parts: a bank this bad or worse occurs ${odds[0]} of the time for the shipped descriptor and ${odds[1]} for ${name(B)}. Over ${fmt(B.draws)} banks per size, under the shipped split-conformal rule, the mean false-alert rates are ${near?"roughly equal":"apart"}: they differ by at most ${fmt(100*gap,1)} percentage points, ${near?"within":"beyond"} the ±${B.precision_points}-point precision the study states for each rate. The share of banks above ${a} with ${name(B)} is ${list(share)||"unchanged"}; no interval is reported for these shares. ${det===1?"Detection in the study stayed at 100% for both.":`Mean detection in the study fell to ${pct(det)}.`}`);
-  const R=F.rasid,f=R.forecast,lv=R.levels,w=lv[lv.length-1]-lv[0],nom=pct(w,0),L=list(lv.map(String)),by={better:[],worse:[],level:[]};
-  put("hf-rasid-sub",`The shipped ridge forecaster next to ${ident(R)}, on the same ${R.days} rolling days, planner settings and verifier. Lower is better except coverage, whose target is ${nom}.`);
-  table("hf-rasid",["Measure","Ridge forecaster",name(R)],[["Load MAE (kW)",...f.mae.map(v=>fmt(v,3))],[`Mean pinball loss, levels ${L}`,...f.pinball.map(v=>fmt(v,3))],
-    [`Truncated CRPS, levels ${L}`,...f.crps.map(v=>fmt(v,3))],[`${nom} interval coverage of load`,...f.coverage.map(v=>pct(v))],
-    ...[["risk-neutral","neutral"],["risk-weighted","weighted"]].map(([p,k])=>[`Total cost over ${R.days} days, ${p} planner`,...R.cost[k].map(v=>fmt(v,2))])],[0,1,1]);
-  [["load MAE",f.mae],["pinball loss",f.pinball],["CRPS",f.crps],[nom+" interval coverage",f.coverage.map(v=>Math.abs(v-w))]].forEach(([k,[x,y]])=>by[y<x?"better":y>x?"worse":"level"].push(k));
-  put("hf-rasid-note",`Against the ridge forecast, ${name(R)} is ${Object.entries(by).filter(([,v])=>v.length).map(([k,v])=>`${k} on ${list(v)}`).join(" and ")}. Pinball loss and CRPS use the shared levels ${L}, so the ridge values are not those in reports/evaluation/rasid.json. Ridge costs are this run's, at most ${pct(R.shipped_gap,3)} from the RASID section's, ${R.shipped_gap<=R.tolerance?"within":"outside"} the gate's ${pct(R.tolerance,2)} solver tolerance. ${fmt(R.pv_clipped)} negative solar values from ${name(R)} were clipped to zero. ${R.verified===R.days?"Every plan passed the independent verifier.":`One policy had only ${R.verified} of ${R.days} plans verified.`}`);
-  const ci=([x,y])=>`${sgn(x)} to ${sgn(y)}`,read=([x,y])=>x>0?"Costlier, excludes zero":y<0?"Cheaper, excludes zero":"Not resolved, spans zero",
-    key=R.paired.find(p=>p.policy==="chronos_risk_neutral"&&p.reference==="candidate_risk_neutral");
-  table("hf-paired",["Comparison","Mean daily difference","95% interval","Days cheaper / costlier","Reading"],
-    R.paired.map(p=>[p.label,sgn(p.mean_daily_difference),ci(p.mean_daily_difference_95ci),`${p.days_cheaper} / ${p.days_more_expensive}`,read(p.mean_daily_difference_95ci)]),[0,1,1,1,0]);
-  if(key){const c=key.mean_daily_difference_95ci,r=c[0]>0||c[1]<0;put("hf-paired-sub",`The forecast value of ${name(R)} over the ridge forecast, with the same risk-neutral planner, ${r?"is resolved":`is not resolved by these ${R.days} days`}: its 95% interval, ${ci(c)} per day, ${r?"excludes":"spans"} zero.`)}
-  put("hf-paired-note",`Each difference is the ${name(R)} policy minus the reference; negative means ${name(R)} cost less. 95% intervals from a bootstrap: ${R.bootstrap}.`);
-  const S=F.sanad,d=S.documents,first=k=>{const x=S.lexical[k][0],y=S.e5[k][0];return y<x?"less often":y>x?"more often":"as often"},bi=first("bilingual");
-  put("hf-sanad-sub",`The engine's lexical retriever next to ${ident(S)}, each ranking every line of the queried datasheet. ${d.en+d.ar} generated datasheets (${d.en} English, ${d.ar} Arabic) give ${fmt(S.queries)} ${S.unit}.`);
-  table("hf-sanad",["Query, metric","Lexical (shipped)",name(S)],[["bilingual","Bilingual (the engine's)"],["en","English label only"],["ar","Arabic label only"]].flatMap(([k,q])=>
-    ["recall@1","recall@3","MRR@4"].map((l,i)=>[`${q}, ${l}`,...[S.lexical,S.e5].map(x=>i>1?fmt(x[k][i],3):pct(x[k][i]))])),[0,1,1]);
-  put("hf-sanad-note",`With the bilingual query, ${name(S)} ranks the claim line first ${bi} ${bi==="as often"?"as":"than"} the lexical retriever; with the English label alone ${first("en")}, with the Arabic label alone ${first("ar")}. ${S.notes.join(" ")}`)}
-function render(){tiles();sanad();banks();share();tail();paired();ledes();safety();models()}
+function render(){tiles();sanad();banks();share();tail();paired();ledes();safety()}
 render();let t;addEventListener("resize",()=>{clearTimeout(t);t=setTimeout(()=>{banks();share();tail();paired()},120)});
 </script>
 </body>
 </html>
 """
 
+MODELS_PAGE = r"""<div class="kicker">Prepared for release 3.1, not yet released · generated fixtures</div>
+<h1>Foundation models from Hugging Face</h1>
+<section id="hf-section" hidden>
+<p class="lede" id="hf-lede"></p>
+<div class="card"><h3>BASIRA: inspection descriptor</h3><p class="sub" id="hf-basira-sub"></p>
+<div class="scroll"><table class="fit" id="hf-basira"></table></div><p class="note" id="hf-basira-note"></p></div>
+<div class="card"><h3>RASID: load and solar forecaster</h3><p class="sub" id="hf-rasid-sub"></p>
+<div class="scroll"><table class="fit" id="hf-rasid"></table></div>
+<h3 class="gap">Paired differences in forecast accuracy</h3><p class="sub" id="hf-accuracy-sub"></p>
+<div class="scroll"><table id="hf-accuracy"></table></div><p class="note" id="hf-rasid-note"></p>
+<h3 class="gap">Paired differences in mean daily cost</h3><p class="sub" id="hf-paired-sub"></p>
+<div class="scroll"><table id="hf-paired"></table></div><p class="note" id="hf-paired-note"></p>
+<h3 class="gap">Risk-weighted plans: cost and tail</h3>
+<div class="scroll"><table class="fit" id="hf-tail"></table></div><p class="note" id="hf-tail-note"></p></div>
+<div class="card"><h3>SANAD: evidence retriever</h3><p class="sub" id="hf-sanad-sub"></p>
+<div class="scroll"><table class="fit" id="hf-sanad"></table></div>
+<div class="scroll"><table class="fit" id="hf-sanad-lang"></table></div><p class="note" id="hf-sanad-note"></p></div>
+</section>
+<p class="foot" id="foot"></p>
+</main></div>
+<script id="data" type="application/json">%%DATA%%</script>
+<script>
+"use strict";
+%%HELPERS%%
+function models(){const F=D.hf;document.getElementById("hf-section").hidden=false;
+  const put=(id,s)=>{document.getElementById(id).textContent=s},name=r=>r.repo.split("/")[1],sgn=v=>(v>0?"+":"")+fmt(v,3),
+    list=xs=>xs.length<3?xs.join(" and "):xs.slice(0,-1).join(", ")+" and "+xs[xs.length-1],ident=r=>`${r.repo} (revision ${r.revision})`,
+    off=[F.basira,F.rasid,F.sanad].filter(r=>!(r.gate&&r.identical)).map(r=>r.repo),ci=([x,y],g=sgn)=>`${g(x)} to ${g(y)}`,
+    is=xs=>xs.length===1?"is":"are",s=xs=>xs.length===1?"":"s";
+  put("hf-lede",`Three pinned checkpoints, each used frozen in place of one component and scored on the same items, seeds, origins and metrics as that component. ${F.fixture_only?"All inputs are generated fixtures. ":""}${off.length?`The fidelity gate or repeat run failed for ${list(off)}.`:"Every run passed its fidelity gate, which re-checks the current component in the new harness, and repeated identically."} Source: reports/hf/*.json.`);
+  const B=F.basira,b=[B.baseline,B.model],s0=B.baseline.shipped,t=B.baseline.frozen_test,a=pct(frac(B.alpha),0),odds=b.map(x=>pct(x.shipped.p_worse));
+  put("hf-basira-sub",`The shipped descriptor next to ${ident(B)}, on the same ${t.intact+t.defects} frozen items and calibration pools, seeds and draws.`);
+  table("hf-basira",["Measure","Shipped descriptor",name(B)],[["Defects detected, frozen test",...b.map(x=>`${x.frozen_test.detected} / ${x.frozen_test.defects}`)],
+    ["False alerts on intact rings, frozen test",...b.map(x=>`${x.frozen_test.false_alerts} / ${x.frozen_test.intact}`)],
+    [`Shipped bank (m = ${s0.m}): long-run false-alert rate`,...b.map(x=>pct(x.shipped.rate))],
+    ["How often a bank this bad or worse occurs",...odds],
+    ...B.baseline.study.map((r,i)=>[`Study, m = ${r.m}: mean false alerts / banks above ${a}`,...b.map(x=>`${pct(x.study[i].false_alert)} / ${pct(x.study[i].share_above)}`)])],[0,1,1]);
+  const rows=B.baseline.study.map((r,i)=>[r,B.model.study[i]]),gap=Math.max(...rows.map(([x,y])=>Math.abs(x.false_alert-y.false_alert))),
+    at=f=>rows.filter(([x,y])=>f(y.share_above,x.share_above)).map(([x])=>x.m),
+    share=[[at((y,x)=>y<x),"lower"],[at((y,x)=>y>x),"higher"]].filter(([m])=>m.length).map(([m,w])=>`${w} at m = ${list(m)}`),det=Math.min(...b.map(x=>x.detection)),near=100*gap<=B.precision_points;
+  put("hf-basira-note",`The frozen test and the long-run rate rest on one bank of ${s0.m} parts: a bank this bad or worse occurs ${odds[0]} of the time for the shipped descriptor and ${odds[1]} for ${name(B)}. Over ${fmt(B.draws)} banks per size, under the shipped split-conformal rule, the mean false-alert rates are ${near?"roughly equal":"apart"}: they differ by at most ${fmt(100*gap,1)} percentage points, ${near?"within":"beyond"} the ±${B.precision_points}-point precision the study states for each rate.${near?` That is what split-conformal calibration predicts for any descriptor, so it is no evidence about ${name(B)} itself.`:""} The share of banks above ${a} with ${name(B)} is ${list(share)||"unchanged"}; no interval is reported for these shares. ${det===1?"Detection in the study stayed at 100% for both, so it does not separate them.":`Mean detection in the study fell to ${pct(det)}.`}`);
+  const R=F.rasid,f=R.forecast,lv=R.levels,w=lv[lv.length-1]-lv[0],nom=pct(w,0),L=list(lv.map(String));
+  put("hf-rasid-sub",`The shipped ridge forecaster next to ${ident(R)}, on the same ${R.days} rolling days, planner settings and verifier. Lower is better except coverage, whose target is ${nom}.`);
+  table("hf-rasid",["Measure","Ridge forecaster",name(R)],[["Load MAE (kW)",...f.mae.map(v=>fmt(v,3))],[`Mean pinball loss, levels ${L}`,...f.pinball.map(v=>fmt(v,3))],
+    [`Truncated CRPS, levels ${L}`,...f.crps.map(v=>fmt(v,3))],[`${nom} interval coverage of load`,...f.coverage.map(v=>pct(v))],
+    ...[["risk-neutral","neutral"],["risk-weighted","weighted"]].map(([p,k])=>[`Total cost over ${R.days} days, ${p} planner`,...R.cost[k].map(v=>fmt(v,2))])],[0,1,1]);
+  const ACC={load_mae:["Load MAE (kW)","load MAE",sgn,""],mean_pinball:["Mean pinball loss","pinball loss",sgn,""],truncated_crps:["Truncated CRPS","CRPS",sgn,""],
+    coverage_80_load:[`${nom} interval coverage`,`${nom} coverage`,v=>(v>0?"+":"")+fmt(100*v,1)," points"]},
+    read=([x,y])=>x>0?"Higher, excludes zero":y<0?"Lower, excludes zero":"Not resolved, spans zero",
+    res=R.accuracy.filter(x=>x.ci[0]>0||x.ci[1]<0).map(x=>ACC[x.k][1]),un=R.accuracy.filter(x=>!(x.ci[0]>0||x.ci[1]<0)).map(x=>ACC[x.k][1]);
+  table("hf-accuracy",["Measure","Mean daily difference","95% interval","Reading"],R.accuracy.map(x=>{const[l,,g,u]=ACC[x.k];return[l,g(x.d)+u,ci(x.ci,g)+u,read(x.ci)]}),[0,1,1,0]);
+  put("hf-accuracy-sub",`${name(R)} minus ridge, day by day over the same ${R.days} days. ${res.length?`The ${list(res)} difference${s(res)} ${is(res)} resolved`:"No accuracy difference is resolved"}${un.length?`; the ${list(un)} difference${s(un)} ${is(un)} not`:""}.`);
+  put("hf-rasid-note",`The accuracy intervals use the same bootstrap as the cost comparisons (${R.bootstrap}) on the per-day values in reports/hf/rasid.json, and are stored in reports/hf/rasid_intervals.json. Pinball loss and CRPS use the shared levels ${L}, so the ridge values are not those in reports/evaluation/rasid.json. Ridge costs are this run's, at most ${pct(R.shipped_gap,3)} from the evaluation report's RASID section, ${R.shipped_gap<=R.tolerance?"within":"outside"} the gate's ${pct(R.tolerance,2)} solver tolerance. ${fmt(R.pv_clipped)} negative solar values from ${name(R)} were clipped to zero before planning; solar is not scored. ${R.verified===R.days?"Every plan passed the independent verifier.":`One policy had only ${R.verified} of ${R.days} plans verified.`}`);
+  const rd=([x,y])=>x>0?"Costlier, excludes zero":y<0?"Cheaper, excludes zero":"Not resolved, spans zero",
+    key=R.paired.find(p=>p.policy==="chronos_risk_neutral"&&p.reference==="candidate_risk_neutral");
+  table("hf-paired",["Comparison","Mean daily difference","95% interval","Days cheaper / costlier","Reading"],
+    R.paired.map(p=>[p.label,sgn(p.mean_daily_difference),ci(p.mean_daily_difference_95ci),`${p.days_cheaper} / ${p.days_more_expensive}`,rd(p.mean_daily_difference_95ci)]),[0,1,1,1,0]);
+  if(key){const c=key.mean_daily_difference_95ci,r=c[0]>0||c[1]<0;put("hf-paired-sub",`The forecast value of ${name(R)} over the ridge forecast, with the same risk-neutral planner, ${r?"is resolved":`is not resolved by these ${R.days} days`}: its 95% interval, ${ci(c)} per day, ${r?"excludes":"spans"} zero.`)}
+  put("hf-paired-note",`Each difference is the ${name(R)} policy minus the reference; negative means ${name(R)} cost less. 95% intervals from a bootstrap: ${R.bootstrap}. Several 95% intervals are shown and none is adjusted for multiple comparisons.`);
+  const T=R.tail,P=R.premium,K=R.planner,cl=R.chronos_levels,cmp=(x,y)=>x<y?"lower":x>y?"higher":"equal";
+  table("hf-tail",["Risk-weighted plan","Ridge forecaster",name(R)],[[`Total cost over ${R.days} days`,...R.cost.weighted.map(v=>fmt(v,2))],
+    ["Mean of the worst 10% of days",...T.cvar.map(v=>fmt(v,2))],["Worst day",...T.worst.map(v=>fmt(v,2))],
+    ["Premium over the same forecaster's risk-neutral plan, per day",...[P.ridge,P.chronos].map(p=>sgn(p.d))]],[0,1,1]);
+  put("hf-tail-note",`The risk-weighted planner minimises ${fmt(1-K.risk,2)} × expected cost + ${fmt(K.risk,2)} × CVaR of scenario cost at β = ${fmt(K.beta,2)}. ${K.costliest?`Every ${name(R)} scenario weighs at least 1 − β (${[...new Set(K.weights)].map(v=>fmt(v,1)).join(", ")}), so its CVaR term is the cost of the costliest scenario alone, and the fixed scenario rule (${R.pairing}) holds each path at one quantile level for all 24 hours, the most extreme pairing load at ${fmt(Math.max(...cl),1)} with solar at ${fmt(Math.min(...cl),1)}. `:""}The ridge plans use reduced paths of past days' forecast errors instead, so this comparison measures that scenario rule as well as the forecaster. The premium's 95% intervals: ridge ${ci(P.ridge.ci)}, ${name(R)} ${ci(P.chronos.ci)} per day. The ${name(R)} plan's realised tail is ${cmp(T.cvar[1],T.cvar[0])} on the worst 10% of days and ${cmp(T.worst[1],T.worst[0])} on the worst day; no interval is reported for these.`);
+  const S=F.sanad,d=S.documents,first=k=>{const x=S.lexical[k][0],y=S.e5[k][0];return y<x?"less often":y>x?"more often":"as often"},bi=first("bilingual");
+  put("hf-sanad-sub",`The engine's lexical retriever next to ${ident(S)}, each ranking every line of the queried datasheet. ${d.en+d.ar} generated datasheets (${d.en} English, ${d.ar} Arabic) give ${fmt(S.queries)} ${S.unit}.`);
+  table("hf-sanad",["Query, metric","Lexical (shipped)",name(S)],[["bilingual","Bilingual (the engine's)"],["en","English label only"],["ar","Arabic label only"]].flatMap(([k,q])=>
+    ["recall@1","recall@3","MRR@4"].map((l,i)=>[`${q}, ${l}`,...[S.lexical,S.e5].map(x=>i>1?fmt(x[k][i],3):pct(x[k][i]))])),[0,1,1]);
+  const G=S.lang,n=[S.by_language.en,S.by_language.ar,S.by_language.ar,S.by_language.en],
+    LAB=["English label, English datasheets","English label, Arabic datasheets","Arabic label, Arabic datasheets","Arabic label, English datasheets"];
+  table("hf-sanad-lang",["Recall@1 by datasheet language (pairs)","Lexical (shipped)",name(S)],LAB.map((l,i)=>[`${l} (${n[i]})`,pct(G.lexical[i]),pct(G.e5[i])]),[0,1,1]);
+  const all=(ix,f)=>ix.every(i=>f(G.e5[i],G.lexical[i])),lt=(x,y)=>x<y,gt=(x,y)=>x>y,same=[0,2],cross=[1,3],
+    word=ix=>all(ix,lt)?"less often":all(ix,gt)?"more often":"not consistently more or less often",
+    gain=first("en")==="more often"&&first("ar")==="more often"&&all(same,lt)&&all(cross,gt);
+  put("hf-sanad-note",`With the bilingual query, ${name(S)} ranks the claim line first ${bi} ${bi==="as often"?"as":"than"} the lexical retriever, which is near its ceiling there: the grammar accepts only lines that start with the exact attribute label, and that query is exactly those labels. ${first("en")===first("ar")?`With either label alone it ranks the claim first ${first("en")}`:`With the English label alone it ranks the claim first ${first("en")}, with the Arabic label alone ${first("ar")}`}. By datasheet language, it ranks the claim first ${word(same)} in the query's own language and ${word(cross)} across languages, a query the engine never makes because it always joins both labels${gain?"; the one-label gain is entirely cross-lingual":""}. The ${fmt(S.queries)} pairs share ${d.en+d.ar} datasheets, the same few query strings and one fixed pool of near-miss lines per language, so they are not independent, and the per-pair results are not in the evidence: no interval is reported for these rates. Verdicts are not recomputed from either ranking.`);
+  const e=F.environment;put("foot",`Generated from reports/hf (basira.json, rasid.json, rasid_intervals.json, sanad.json) · evaluation run: Python ${e.python} · NumPy ${e.numpy} · SciPy ${e.scipy} · torch ${e.torch} · All inputs are generated fixtures; costs are illustrative units. Rebuild with python scripts/build_report.py.`)}
+models();
+</script>
+</body>
+</html>
+"""
 
 FONT = ROOT / "mizan/web/fonts/ReadexPro-latin.woff2"  # Latin-only subset; the report has no Arabic text
 
 
-def build(source, out):
-    data = json.dumps(summarize(source), ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+def _page(body, data, title, back, back_href):
+    data = json.dumps(data, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     data = data.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
-    page = PAGE.replace("%%FONT_WOFF2%%", base64.b64encode(FONT.read_bytes()).decode())
-    Path(out).write_text(page.replace("%%DATA%%", data), encoding="utf-8")
+    head = HEAD.replace("%%TITLE%%", title).replace("%%BACK%%", back).replace("%%BACK_HREF%%", back_href)
+    page = (head + body).replace("%%STYLE%%", STYLE).replace("%%HELPERS%%", HELPERS)
+    page = page.replace("%%FONT_WOFF2%%", base64.b64encode(FONT.read_bytes()).decode())
+    return page.replace("%%DATA%%", data)
+
+
+def build(source, out, models_out=None, hf_source=None):
+    """Write the report to out and, when there is Hugging Face evidence, the models page to models_out (default: a
+    models.html beside out), linked from the report. Returns out."""
+    models = models_summary(source, hf_source)
+    body = PAGE.replace("%%MODELS_LINK%%", MODELS_LINK if models else "")
+    Path(out).write_text(_page(body, summarize(source), "MIZAN | Evaluation report", "What is MIZAN?", "https://komail6222-png.github.io/mizan/"), encoding="utf-8")
+    if models:
+        target = Path(models_out) if models_out else Path(out).with_name("models.html")
+        target.write_text(_page(MODELS_PAGE, models, "MIZAN | Foundation models from Hugging Face", "Evaluation report", "index.html"), encoding="utf-8")
     return out
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source", default=ROOT / "reports/evaluation")
     parser.add_argument("--out", default=ROOT / "reports/evaluation/index.html")
+    parser.add_argument("--models-out", help="models page (default: models.html beside --out)")
     args = parser.parse_args()
-    print(build(args.source, args.out))
+    print(build(args.source, args.out, args.models_out))

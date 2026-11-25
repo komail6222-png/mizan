@@ -40,12 +40,60 @@ def check_landing(browser, site, screenshots=None):
         steps = page.locator("#rail button")
         steps.nth(1).click()
         assert steps.nth(1).get_attribute("aria-pressed") == "true"
+        models = page.locator('#models a[href="report/models.html"]')  # the comparison link lands on the models page
+        assert models.count() == 1 and "id=\"hf-section\"" in (Path(site) / "report/models.html").read_text(encoding="utf-8")
         if screenshots:
             page.screenshot(path=str(Path(screenshots) / f"{width}-landing-ar.png"), full_page=True)
         assert not errors and not external, (errors, external)
         results.append({"viewport": [width, height], "views": ["landing-en", "landing-tampered", "landing-ar"],
                         "page_errors": 0, "external_requests": 0, "receipts_weighed_in_browser": rows,
                         "tampered_copy_rejected": True, "rtl": True})
+        page.close()
+    return results
+
+
+def check_models(browser, path, screenshots=None):
+    """The Hugging Face comparison page: renders offline without overflow, every Reading cell agrees with the sign of
+    its stored 95% interval, and the comparison tables marked .fit fit a phone screen without scrolling."""
+    rasid = json.loads((ROOT / "reports/hf/rasid.json").read_bytes())
+    derived = {c["comparison"]: c for c in json.loads((ROOT / "reports/hf/rasid_intervals.json").read_bytes())["comparisons"]}
+    sanad = json.loads((ROOT / "reports/hf/sanad.json").read_bytes())
+    results = []
+    for width, height in [(1280, 900), (390, 844)]:
+        page = browser.new_page(viewport={"width": width, "height": height})
+        errors, external = [], []
+        page.on("pageerror", lambda exc: errors.append(str(exc)))
+        page.on("request", lambda req: external.append(req.url) if req.url.startswith(("https:", "http:")) else None)
+        page.goto(Path(path).resolve().as_uri())
+        page.locator("#hf-section").wait_for(state="visible", timeout=10000)
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "models page overflows"
+        # Paired cost differences: each Reading follows the sign of the stored interval.
+        pairs = rasid["model"]["paired_comparisons"]
+        spans = [p["mean_daily_difference_95ci"][0] <= 0 <= p["mean_daily_difference_95ci"][1] for p in pairs]
+        expected = ["Not resolved" if s else "Costlier" if p["mean_daily_difference_95ci"][0] > 0 else "Cheaper" for p, s in zip(pairs, spans)]
+        readings = page.locator("#hf-paired tr td:last-child").all_inner_texts()
+        assert len(readings) == len(pairs) and all(r.startswith(x) for r, x in zip(readings, expected)), (readings, expected)
+        key = [s for p, s in zip(pairs, spans) if (p["policy"], p["reference"]) == ("chronos_risk_neutral", "candidate_risk_neutral")]
+        assert key and ("not resolved" in page.inner_text("#hf-paired-sub")) == key[0], page.inner_text("#hf-paired-sub")
+        # Forecast-accuracy differences: each Reading follows the sign of its derived interval, never a point estimate.
+        accuracy = [derived["chronos_minus_ridge_" + k] for k in ("load_mae", "mean_pinball", "truncated_crps", "coverage_80_load")]
+        want = ["Higher" if c["interval_95"][0] > 0 else "Lower" if c["interval_95"][1] < 0 else "Not resolved" for c in accuracy]
+        got = page.locator("#hf-accuracy tr td:last-child").all_inner_texts()
+        assert len(got) == len(want) and all(r.startswith(x) for r, x in zip(got, want)), (got, want)
+        # SANAD recall@1 by datasheet language: both sides of every (label, datasheet) pair, as stored.
+        cells = page.locator("#hf-sanad-lang tr").all_inner_texts()[1:]
+        pct = lambda v: f"{100 * v:.1f}%"
+        order = (("en", "en"), ("en", "ar"), ("ar", "ar"), ("ar", "en"))
+        assert len(cells) == 4 and all(pct(sanad["baseline"]["metrics"][q][d]["recall_at_1"]) in c and pct(sanad["model"]["metrics"][q][d]["recall_at_1"]) in c
+                                       for c, (q, d) in zip(cells, order)), cells
+        assert page.locator("#hf-tail tr").count() == 5, "the risk-weighted tail rows are missing"
+        fit = page.evaluate("[...document.querySelectorAll('#hf-section table.fit')].map(t => t.parentNode.scrollWidth <= t.parentNode.clientWidth)")
+        assert fit and all(fit), "an HF comparison table scrolls"
+        assert not errors and not external, (errors, external)
+        if screenshots:
+            page.screenshot(path=str(Path(screenshots) / f"{width}-models.png"), full_page=True)
+        results.append({"viewport": [width, height], "views": ["models"], "page_errors": 0, "external_requests": 0,
+                        "hf_paired_readings": len(readings), "hf_accuracy_readings": len(got), "fit_tables": len(fit)})
         page.close()
     return results
 
@@ -132,22 +180,17 @@ def run(chromium=None, screenshots=None, demo=None, spaces=None, site=None):
                     page.wait_for_timeout(50)
                     answered.append(bool(page.locator(f"#{chart} .tip").inner_text().strip()))
                 assert all(answered) and not errors and not external, (answered, errors, external)
-                readings = []
-                hf = ROOT / "reports/hf/rasid.json"
-                if hf.exists():  # the Hugging Face section reads each stored paired interval by its sign
-                    pairs = json.loads(hf.read_bytes())["model"]["paired_comparisons"]
-                    spans = [p["mean_daily_difference_95ci"][0] <= 0 <= p["mean_daily_difference_95ci"][1] for p in pairs]
-                    expected = ["Not resolved" if s else "Costlier" if p["mean_daily_difference_95ci"][0] > 0 else "Cheaper" for p, s in zip(pairs, spans)]
-                    readings = page.locator("#hf-paired tr td:last-child").all_inner_texts()
-                    assert len(readings) == len(pairs) and all(r.startswith(x) for r, x in zip(readings, expected)), (readings, expected)
-                    key = [s for p, s in zip(pairs, spans) if (p["policy"], p["reference"]) == ("chronos_risk_neutral", "candidate_risk_neutral")]
-                    assert key and ("not resolved" in page.inner_text("#hf-paired-sub")) == key[0], page.inner_text("#hf-paired-sub")
-                    assert page.evaluate("[...document.querySelectorAll('#hf-section table.fit')].every(t => t.parentNode.scrollWidth <= t.parentNode.clientWidth)"), "an HF comparison table scrolls"
+                models = ROOT / "reports/evaluation/models.html"
+                if models.exists():  # the Hugging Face comparison has its own page, linked from the report
+                    link = page.locator('#models-link a[href="models.html"]')
+                    assert link.count() == 1 and link.is_visible(), "the report does not link to the models page"
                 if screenshots:
                     page.screenshot(path=str(Path(screenshots) / f"{width}-report.png"), full_page=True)
                 reports.append({"viewport": [width, height], "views": ["evaluation-report"], "page_errors": 0,
-                                "external_requests": 0, "charts_with_tooltips": len(answered), "hf_paired_readings": len(readings)})
+                                "external_requests": 0, "charts_with_tooltips": len(answered)})
                 page.close()
+            if (ROOT / "reports/evaluation/models.html").exists():
+                reports.extend(check_models(browser, ROOT / "reports/evaluation/models.html", screenshots))
         if site:
             reports.extend(check_landing(browser, site, screenshots))
         browser.close()

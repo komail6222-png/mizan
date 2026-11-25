@@ -10,10 +10,20 @@ from scripts import build_site
 
 ROOT = Path(__file__).resolve().parents[1]
 HF = {k: json.loads((ROOT / f"reports/hf/{k}.json").read_bytes()) for k in ("basira", "rasid", "sanad")}
+INTERVALS = json.loads((ROOT / "reports/hf/rasid_intervals.json").read_bytes())
 
 
-def hf_facts(basira=None, rasid=None, sanad=None):
-    return build_site.hf_facts(basira or HF["basira"], rasid or HF["rasid"], sanad or HF["sanad"])
+def hf_facts(basira=None, rasid=None, sanad=None, intervals=None):
+    return build_site.hf_facts(basira or HF["basira"], rasid or HF["rasid"], sanad or HF["sanad"], intervals or INTERVALS)
+
+
+def with_derived(name, **fields):
+    """The derived intervals with one comparison changed."""
+    intervals = copy.deepcopy(INTERVALS)
+    for c in intervals["comparisons"]:
+        if c["comparison"] == name:
+            c.update(fields)
+    return intervals
 
 
 def with_interval(lo, hi):
@@ -35,6 +45,17 @@ class FoundationModelFactsTests(unittest.TestCase):
             "hf_basira_false": "1", "hf_basira_false_base": "8", "hf_basira_intact": "40",
             "hf_basira_detected": "40", "hf_basira_defects": "40", "hf_basira_m": "24", "hf_basira_draws": "400",
             "hf_rasid_mae": "2.572", "hf_rasid_mae_ridge": "2.794", "hf_rasid_days": "60",
+            # Accuracy differences, each with its paired interval from reports/hf/rasid_intervals.json
+            "hf_rasid_mae_gap": "−0.221", "hf_rasid_mae_gap_lo": "−0.698", "hf_rasid_mae_gap_hi": "+0.118",
+            "hf_rasid_mae_gap_phrase_en": "not resolved", "hf_rasid_mae_gap_phrase_ar": "غير مؤكد",
+            "hf_rasid_cov": "65.1%", "hf_rasid_cov_ridge": "74.7%",
+            "mae_gap": "−0.274", "mae_gap_lo": "−0.559", "mae_gap_hi": "+0.056",
+            "mae_gap_phrase_en": "not resolved", "mae_gap_phrase_ar": "غير مؤكد", "rasid_days": "60",
+            # SANAD recall@1 by (query label, datasheet language)
+            "hf_sanad_e5_r1_en_en": "85.8%", "hf_sanad_lexical_r1_en_en": "100.0%",
+            "hf_sanad_e5_r1_ar_ar": "77.5%", "hf_sanad_lexical_r1_ar_ar": "94.0%",
+            "hf_sanad_e5_r1_en_ar": "69.9%", "hf_sanad_lexical_r1_en_ar": "23.7%",
+            "hf_sanad_e5_r1_ar_en": "67.4%", "hf_sanad_lexical_r1_ar_en": "25.1%",
             "hf_rasid_value": "−0.135", "hf_rasid_lo": "−0.507", "hf_rasid_hi": "+0.154",
             "hf_rasid_phrase_en": "not resolved", "hf_rasid_phrase_ar": "غير مؤكد",
             "hf_rasid_weighted": "+1.060", "hf_rasid_weighted_lo": "+0.328", "hf_rasid_weighted_hi": "+1.641",
@@ -79,6 +100,24 @@ class FoundationModelFactsTests(unittest.TestCase):
                 self.assertEqual((f["hf_rasid_phrase_en"], f["hf_rasid_phrase_ar"]), (en, ar))
                 self.assertEqual((f["hf_rasid_lo"], f["hf_rasid_hi"]), (("+" if lo >= 0 else "−") + f"{abs(lo):.3f}", ("+" if hi >= 0 else "−") + f"{abs(hi):.3f}"))
 
+    def test_accuracy_phrases_follow_the_sign_of_the_derived_interval(self):
+        for (lo, hi), en, ar in [((-0.7, 0.1), "not resolved", "غير مؤكد"), ((-0.7, -0.1), "resolved", "مؤكد"),
+                                 ((0.1, 0.4), "resolved", "مؤكد"), ((-0.3, 0.0), "not resolved", "غير مؤكد")]:
+            with self.subTest(interval=(lo, hi)):
+                f = hf_facts(intervals=with_derived("chronos_minus_ridge_load_mae", interval_95=[lo, hi], resolved=lo > 0 or hi < 0))
+                self.assertEqual((f["hf_rasid_mae_gap_phrase_en"], f["hf_rasid_mae_gap_phrase_ar"]), (en, ar))
+                self.assertEqual((f["hf_rasid_mae_gap_lo"], f["hf_rasid_mae_gap_hi"]), (build_site.signed(lo, 3), build_site.signed(hi, 3)))
+        # A derived file whose "resolved" flag disagrees with its own interval is refused.
+        with self.assertRaisesRegex(SystemExit, "resolved=True"):
+            hf_facts(intervals=with_derived("chronos_minus_ridge_load_mae", resolved=True))
+
+    def test_derived_intervals_must_come_from_the_evidence_as_it_is(self):
+        build_site.check_derived(INTERVALS)   # the committed file
+        stale = copy.deepcopy(INTERVALS)
+        stale["source"]["files"]["reports/hf/rasid.json"] = "0" * 64
+        with self.assertRaisesRegex(SystemExit, "derive_hf_intervals"):
+            build_site.check_derived(stale)
+
     def test_wording_that_no_longer_matches_the_evidence_stops_the_build(self):
         def change(kind, path, value):
             data = copy.deepcopy(HF[kind])
@@ -92,9 +131,22 @@ class FoundationModelFactsTests(unittest.TestCase):
             "E5 no longer behind with the bilingual query": (change("sanad", ["model", "metrics", "bilingual", "all", "recall_at_1"], 0.99), "SANAD"),
             "study means further apart than the stated precision": (change("basira", ["model", "calibration_study", "rows", 1, "marginal_mean_false_alert"], 0.045), "roughly equal"),
             "the two sides no longer detect the same defects": (change("basira", ["model", "frozen_test", "detected"], 39), "same defects"),
-            "Chronos error no longer lower": (change("rasid", ["model", "forecast", "chronos_mae_kw"], 2.9), "lower load error"),
-            "Chronos pinball no longer worse": (change("rasid", ["model", "forecast", "chronos_mean_pinball"], 0.7), "score worse"),
+            "the two sides no longer have the same intact count": (change("basira", ["model", "frozen_test", "rows", 0, "condition"],
+                                                                        "defect" if HF["basira"]["model"]["frozen_test"]["rows"][0]["condition"] == "intact" else "intact"), "same frozen items"),
+            # RASID accuracy: stated only with the derived intervals, which must belong to this rasid.json.
+            "a rasid.json the intervals were not derived from (MAE)": (change("rasid", ["model", "forecast", "chronos_mae_kw"], 2.9), "not derived from this"),
+            "a rasid.json the intervals were not derived from (CRPS)": (change("rasid", ["model", "forecast", "chronos_truncated_crps"], 1.2), "not derived from this"),
+            "a rasid.json the intervals were not derived from (coverage)": (change("rasid", ["baseline", "forecast", "ridge_coverage_80_load"], 0.8), "not derived from this"),
+            "pinball difference now resolved": ({"intervals": with_derived("chronos_minus_ridge_mean_pinball", interval_95=[0.01, 0.13], resolved=True)}, "pinball-loss and CRPS"),
+            "CRPS difference now resolved": ({"intervals": with_derived("chronos_minus_ridge_truncated_crps", interval_95=[-0.3, -0.01], resolved=True)}, "pinball-loss and CRPS"),
+            "coverage difference no longer resolved": ({"intervals": with_derived("chronos_minus_ridge_coverage_80_load", interval_95=[-0.16, 0.01], resolved=False)}, "fewer hours|less often"),
+            "coverage now resolved higher": ({"intervals": with_derived("chronos_minus_ridge_coverage_80_load", interval_95=[0.01, 0.1], resolved=True)}, "fewer hours|less often"),
             "risk-weighted Chronos plan no longer resolved costlier": (change("rasid", ["model", "paired_comparisons", 2, "mean_daily_difference_95ci"], [-0.1, 1.6]), "risk-weighted"),
+            # SANAD by datasheet language: behind in the query's own language, ahead only across languages.
+            "E5 no longer behind on English datasheets with the English label": (change("sanad", ["model", "metrics", "en", "en", "recall_at_1"], 1.0), "own language"),
+            "E5 no longer behind on Arabic datasheets with the Arabic label": (change("sanad", ["model", "metrics", "ar", "ar", "recall_at_1"], 0.95), "own language"),
+            "E5 no longer ahead with the English label on Arabic datasheets": (change("sanad", ["model", "metrics", "en", "ar", "recall_at_1"], 0.2), "other language"),
+            "E5 no longer ahead with the Arabic label on English datasheets": (change("sanad", ["model", "metrics", "ar", "en", "recall_at_1"], 0.25), "other language"),
             "a gate that did not pass": (change("rasid", ["gate", "passed"], False), "rasid.json: .*gate passed"),
             "a repeat run that was not identical": (change("sanad", ["repeat_run", "identical"], False), "sanad.json: .*repeat run was identical"),
             "a study scope without its stated precision": (change("basira", ["baseline", "calibration_study", "scope"], "Generated rings only."), "precision"),
@@ -120,11 +172,32 @@ class FoundationModelFactsTests(unittest.TestCase):
                     self.assertIn(self.figures[model], figures, model)
                     self.assertIn(self.figures[current], figures, current)
                 for key in ("hf_rasid_value", "hf_rasid_lo", "hf_rasid_hi", f"hf_rasid_phrase_{lang}",
-                            "hf_rasid_weighted", "hf_rasid_weighted_lo", "hf_rasid_weighted_hi"):
+                            "hf_rasid_weighted", "hf_rasid_weighted_lo", "hf_rasid_weighted_hi",
+                            # every accuracy difference stands with its interval and its phrase
+                            "hf_rasid_mae_gap", "hf_rasid_mae_gap_lo", "hf_rasid_mae_gap_hi", f"hf_rasid_mae_gap_phrase_{lang}",
+                            "hf_rasid_cov", "hf_rasid_cov_ridge"):
                     self.assertIn(self.figures[key], spans, key)
-        self.assertIn('href="report/#hf-section"', block.group(1))
-        report = (ROOT / "reports/evaluation/index.html").read_text(encoding="utf-8")
-        self.assertIn('<section id="hf-section"', report, "the link's target exists in the report page")
+                # SANAD: the one-label gain is shown by datasheet language, with both sides of each pair.
+                for q, d in (("en", "en"), ("ar", "ar"), ("en", "ar"), ("ar", "en")):
+                    for side in ("e5", "lexical"):
+                        self.assertIn(self.figures[f"hf_sanad_{side}_r1_{q}_{d}"], spans, (side, q, d))
+                self.assertNotRegex(spans, r"more accurate|score worse|better forecast|built on them")
+        self.assertIn('href="report/models.html"', block.group(1))
+        self.assertNotIn("#hf-section", page, "the Hugging Face comparison moved to its own page")
+        models = (ROOT / "reports/evaluation/models.html").read_text(encoding="utf-8")
+        self.assertIn('<section id="hf-section"', models, "the link's target exists on the models page")
+        self.assertIn("report/models.html", build_site.COPIED, "the site serves the models page where the link points")
+
+    def test_the_3_0_forecast_line_states_its_interval(self):
+        page, _ = build_site.landing_html(self.packet, self.figures)
+        case = re.search(r'<div class="case"><h4>RASID</h4>(.*?)</div>', page, re.S).group(1)
+        for lang in ("en", "ar"):
+            spans = "".join(re.findall(rf'<span data-l="{lang}">(.*?)</span>', case, re.S))
+            with self.subTest(lang=lang):
+                for key in ("mae_ridge", "mae_naive", "mae_gap", "mae_gap_lo", "mae_gap_hi", f"mae_gap_phrase_{lang}", "rasid_days"):
+                    self.assertIn(self.figures[key], spans, key)
+        self.assertNotIn("A better forecast", case)
+        self.assertNotIn("تنبؤ أدق", case)
 
     def test_landing_states_the_test_counts_and_keeps_arabic_figures_left_to_right(self):
         page, _ = build_site.landing_html(self.packet, self.figures)

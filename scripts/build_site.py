@@ -6,17 +6,21 @@ Layout:
   index.html          the bilingual introduction (site/landing.html); it re-verifies the signed results itself
   exhibit/index.html  the combined exhibit (reports/demo/MIZAN_Demo.html)
   report/index.html   the evaluation report (reports/evaluation/index.html)
+  report/models.html  the Hugging Face model comparison (reports/evaluation/models.html)
   sanad/, basira/, rasid/   the three product Spaces (spaces/*/index.html)
   og.png              the link-preview image (site/og.png)
+  OFL-ReadexPro.txt   the SIL Open Font License of the embedded Readex Pro typeface
 
 Before writing anything, the script refuses to build unless:
   1. every signed result in reports/demo/demo_results.json verifies against the pinned key;
   2. the exhibit and the three Spaces are exactly the pages that scripts/build_exhibit.py and
      scripts/build_spaces.py generate from that signed packet;
   3. every number on the introduction is read from reports/ (a missing value stops the build), the
-     wording "resolved" / "not resolved" matches the sign of the reported 95% intervals, every comparison
-     the Foundation models block states in words still holds in reports/hf/, and the test counts and where the
-     skipped tests ran match reports/application-tests.txt;
+     wording "resolved" / "not resolved" matches the sign of the reported 95% intervals (cost differences from
+     the evaluation files, forecast-accuracy differences from reports/hf/rasid_intervals.json, which must have been
+     derived from the evidence files as they are now), every comparison the Foundation models block states in
+     words still holds in reports/hf/, and the test counts and where the skipped tests ran match
+     reports/application-tests.txt;
   4. no page loads a script, stylesheet, font or image from another origin.
 Exhibit pages are copied byte for byte. The introduction embeds the same signed packet and the exhibit's own
 verification code, copied from mizan/web/template.html.
@@ -49,8 +53,10 @@ LANDING = ROOT / "site/landing.html"
 COPIED = {
     "exhibit/index.html": "reports/demo/MIZAN_Demo.html",
     "report/index.html": "reports/evaluation/index.html",
+    "report/models.html": "reports/evaluation/models.html",
     **{f"{kind}/index.html": f"spaces/{kind}/index.html" for kind in SPACES},
     "og.png": "site/og.png",
+    "OFL-ReadexPro.txt": "mizan/web/fonts/OFL-ReadexPro.txt",  # the licence of the typeface every page embeds
 }
 # Anything that would make the browser fetch from another origin. Plain links (<a href>) are navigation, not loads.
 EXTERNAL = [
@@ -99,10 +105,35 @@ def percent(v):
     return str((Decimal(str(v)) * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)) + "%"
 
 
-def hf_facts(basira, rasid, sanad):
+INTERVALS = "reports/hf/rasid_intervals.json"
+
+
+def interval_keys(prefix, c):
+    """Value, 95% interval and phrase keys for one derived paired comparison (scripts/derive_hf_intervals.py)."""
+    lo, hi = c["interval_95"]
+    resolved = lo > 0 or hi < 0
+    if resolved != c["resolved"]:
+        fail(f"{INTERVALS}: {c['comparison']} says resolved={c['resolved']} for the interval {lo} to {hi}")
+    return {prefix: signed(c["mean_difference"], 3), prefix + "_lo": signed(lo, 3), prefix + "_hi": signed(hi, 3),
+            prefix + "_phrase_en": "resolved" if resolved else "not resolved", prefix + "_phrase_ar": "مؤكد" if resolved else "غير مؤكد"}
+
+
+def comparisons(intervals):
+    return {c["comparison"]: c for c in intervals["comparisons"]}
+
+
+def check_derived(intervals, root=ROOT):
+    """The derived intervals must have been computed from the evidence files as they are now."""
+    for path, sha in intervals["source"]["files"].items():
+        if hashlib.sha256((Path(root) / path).read_bytes()).hexdigest() != sha:
+            fail(f"{INTERVALS} was derived from another {path}; run python scripts/derive_hf_intervals.py")
+
+
+def hf_facts(basira, rasid, sanad, intervals):
     """The Foundation models block, read from reports/hf/: each model's figure next to the current component's.
 
-    The block's fixed wording is checked against the files here; a statement that no longer holds stops the build."""
+    The block's fixed wording is checked against the files here; a statement that no longer holds stops the build.
+    Accuracy differences are stated only with their paired 95% intervals from reports/hf/rasid_intervals.json."""
     for name, r in (("basira", basira), ("rasid", rasid), ("sanad", sanad)):
         if not (r["gate"]["passed"] and r["repeat_run"]["identical"] and r["fixture_only"]):
             fail(f"reports/hf/{name}.json: the block publishes only runs on generated data whose gate passed and whose repeat run was identical")
@@ -121,14 +152,20 @@ def hf_facts(basira, rasid, sanad):
     precision = float(stated.group(1))
     if not gap <= precision:
         fail("BASIRA: the study's mean false-alert rates are no longer within its stated precision; the block calls them roughly equal")
-    # RASID: lower load error, worse uncertainty ranges, and the forecast value with its interval.
+    # RASID: each accuracy difference with its paired interval, then the forecast value and the risk-weighted plan.
     fb, fm = rasid["baseline"]["forecast"], rasid["model"]["forecast"]
-    target = fm["shared_levels"][-1] - fm["shared_levels"][0]
-    if not fm["chronos_mae_kw"] < fb["ridge_mae_kw"]:
-        fail("RASID: Chronos no longer has the lower load error the block states")
-    if not (fm["chronos_mean_pinball"] > fb["ridge_mean_pinball"] and fm["chronos_truncated_crps"] > fb["ridge_truncated_crps"]
-            and abs(fm["chronos_coverage_80_load"] - target) > abs(fb["ridge_coverage_80_load"] - target)):
-        fail("RASID: the block says Chronos's uncertainty ranges score worse (pinball, CRPS and coverage)")
+    acc = comparisons(intervals)
+    for key, a, b in (("load_mae", fm["chronos_mae_kw"], fb["ridge_mae_kw"]), ("mean_pinball", fm["chronos_mean_pinball"], fb["ridge_mean_pinball"]),
+                      ("truncated_crps", fm["chronos_truncated_crps"], fb["ridge_truncated_crps"]),
+                      ("coverage_80_load", fm["chronos_coverage_80_load"], fb["ridge_coverage_80_load"])):
+        c = acc["chronos_minus_ridge_" + key]
+        if abs(c["mean_a"] - a) > 1e-9 or abs(c["mean_b"] - b) > 1e-9:
+            fail(f"RASID: {INTERVALS} was not derived from this reports/hf/rasid.json ({key})")
+    if any(acc["chronos_minus_ridge_" + k]["resolved"] for k in ("mean_pinball", "truncated_crps")):
+        fail("RASID: the block says the pinball-loss and CRPS differences are not resolved")
+    coverage = acc["chronos_minus_ridge_coverage_80_load"]
+    if not coverage["interval_95"][1] < 0:
+        fail("RASID: the block says Chronos's 80% ranges cover the load in fewer hours, a resolved difference")
     pairs = {(p["policy"], p["reference"]): p for p in rasid["model"]["paired_comparisons"]}
     weighted = pairs[("chronos", "candidate")]
     if not weighted["mean_daily_difference_95ci"][0] > 0:
@@ -136,10 +173,16 @@ def hf_facts(basira, rasid, sanad):
     value = pairs[("chronos_risk_neutral", "candidate_risk_neutral")]
     lo, hi = value["mean_daily_difference_95ci"]
     resolved = lo > 0 or hi < 0
-    # SANAD: E5 behind on the engine's bilingual query (the ceiling), ahead with either label alone.
+    # SANAD: E5 behind on the engine's bilingual query (the ceiling), ahead with either label alone, and that gain is
+    # cross-lingual: ahead on datasheets in the other language, behind on datasheets in the query's own language.
     r1 = {k: {kind: sanad[k]["metrics"][kind]["all"]["recall_at_1"] for kind in ("bilingual", "en", "ar")} for k in ("baseline", "model")}
     if not (r1["model"]["bilingual"] < r1["baseline"]["bilingual"] and r1["model"]["en"] > r1["baseline"]["en"] and r1["model"]["ar"] > r1["baseline"]["ar"]):
         fail("SANAD: the block says E5 ranks the claim line first less often with the bilingual query and more often with each label alone")
+    by = {k: {(q, d): sanad[k]["metrics"][q][d]["recall_at_1"] for q in ("en", "ar") for d in ("en", "ar")} for k in ("baseline", "model")}
+    if not all(by["model"][q, q] < by["baseline"][q, q] for q in ("en", "ar")):
+        fail("SANAD: the block says E5 ranks the claim line first less often on datasheets in the query's own language")
+    if not all(by["model"][q, d] > by["baseline"][q, d] for q, d in (("en", "ar"), ("ar", "en"))):
+        fail("SANAD: the block says E5's one-label gain comes from datasheets in the other language")
     return {
         "hf_basira_false": str(side["model"]["false_alerts"]),
         "hf_basira_false_base": str(side["baseline"]["false_alerts"]),
@@ -150,6 +193,9 @@ def hf_facts(basira, rasid, sanad):
         "hf_basira_draws": group(basira["settings"]["draws"]),
         "hf_rasid_mae": f"{fm['chronos_mae_kw']:.3f}",
         "hf_rasid_mae_ridge": f"{fb['ridge_mae_kw']:.3f}",
+        **interval_keys("hf_rasid_mae_gap", acc["chronos_minus_ridge_load_mae"]),
+        "hf_rasid_cov": percent(coverage["mean_a"]),
+        "hf_rasid_cov_ridge": percent(coverage["mean_b"]),
         "hf_rasid_days": str(rasid["model"]["target_days"]),
         "hf_rasid_value": signed(value["mean_daily_difference"], 3),
         "hf_rasid_lo": signed(lo, 3),
@@ -165,6 +211,9 @@ def hf_facts(basira, rasid, sanad):
         "hf_sanad_e5_r1_en": percent(r1["model"]["en"]),
         "hf_sanad_lexical_r1_ar": percent(r1["baseline"]["ar"]),
         "hf_sanad_e5_r1_ar": percent(r1["model"]["ar"]),
+        # recall@1 by (query label, datasheet language)
+        **{f"hf_sanad_{side}_r1_{q}_{d}": percent(by[k][q, d]) for side, k in (("lexical", "baseline"), ("e5", "model"))
+           for q in ("en", "ar") for d in ("en", "ar")},
     }
 
 
@@ -205,6 +254,11 @@ def facts(packet):
     lo, hi = forecast["mean_daily_difference_95ci"]
     if not lo < 0 < hi:
         fail("the forecast-value interval no longer includes zero; the introduction calls it not resolved")
+    intervals = load(INTERVALS)
+    check_derived(intervals)
+    mae_gap = comparisons(intervals)["ridge_minus_seasonal_naive_load_mae"]
+    if abs(mae_gap["mean_a"] - rasid["ridge_mae_kw"]) > 1e-9 or abs(mae_gap["mean_b"] - rasid["seasonal_naive_mae_kw"]) > 1e-9:
+        fail(f"{INTERVALS}: the ridge and seasonal-naive errors are not those of reports/evaluation/rasid.json")
     passed, total = (int(x) for x in safety["rasid_invalid_mutations_rejected"].split("/"))
     return {
         "receipts": str(len(packet["run"]["receipts"])),
@@ -220,9 +274,11 @@ def facts(packet):
         "pac_min": str(basira["calibration_study"]["minimum_m_for_pac"]),
         "mae_ridge": f"{rasid['ridge_mae_kw']:.3f}",
         "mae_naive": f"{rasid['seasonal_naive_mae_kw']:.3f}",
+        **interval_keys("mae_gap", mae_gap),
+        "rasid_days": str(rasid["target_days"]),
         "premium": signed(premium["total_difference"]),
         "forecast_value": signed(forecast["total_difference"]),
-        **hf_facts(*(load(f"reports/hf/{k}.json") for k in ("basira", "rasid", "sanad"))),
+        **hf_facts(*(load(f"reports/hf/{k}.json") for k in ("basira", "rasid", "sanad")), intervals),
     }
 
 
