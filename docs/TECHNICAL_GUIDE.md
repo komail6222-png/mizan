@@ -140,7 +140,7 @@ python -m mizan hf compare sanad
 
 Substitute `basira` for DINOv2 or `rasid` for Chronos-Bolt. The local control plane, strict parser, calibrated detector and MILP operate independently of those experiments.
 
-With all three imported into `var/hf`, `python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat` reproduces the published comparison (in the optional environment, with `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`; BASIRA took 869 s per run on the recorded CPU, and `--repeat` runs each system twice). `--out` is required, and `reports/hf` is written only with `--repeat`; write anywhere else to experiment.
+With all three imported into `var/hf`, `python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat` reproduces the published comparison (in the optional environment, with `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`; on the recorded CPU, BASIRA's two runs took 868.8 s and 850.5 s, since `--repeat` runs each system twice). `--out` is required, and `reports/hf` is written only with `--repeat`; write anywhere else to experiment.
 
 ## Recovery and qualification
 

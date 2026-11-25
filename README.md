@@ -63,7 +63,7 @@ Every number below comes from a file in [`reports/`](reports/). All inputs are g
 
 | Claim | Result | Source |
 |---|---|---|
-| Application tests | 159/159 passed. On Python 3.12 and 3.13, 155 ran and the 4 model-loader tests skipped without torch; those 4 passed in the optional Hugging Face environment against the verified checkpoints | [`reports/application-tests.txt`](reports/application-tests.txt) |
+| Application tests | 161/161 passed. On Python 3.12 and 3.13, 157 ran and the 4 model-loader tests skipped without torch; those 4 passed in the optional Hugging Face environment against the verified checkpoints | [`reports/application-tests.txt`](reports/application-tests.txt) |
 | SANAD never approves wrongly on its test sets | 36/36 original cases, 16/16 grammar-2 cases (Arabic typography and units, acknowledged and forged context), 16/16 multi-model tables; **0 false MEETS**. Baselines: numeric-only rule 24/36; first-number table reader 2/16 with 2 false MEETS | [`reports/evaluation/sanad.json`](reports/evaluation/sanad.json) |
 | BASIRA detects defects and is honest about false alerts | 40/40 generated defects flagged, 8/40 intact parts flagged (pixel baseline: 3/40 and 1/40). The shipped bank's long-run false-alert rate is about 12.9%; the optional PAC rule keeps banks above 5% to 4.3% (m = 50) and 1.5% (m = 100) | [`reports/evaluation/basira.json`](reports/evaluation/basira.json) |
 | RASID separates forecast value from risk aversion | Forecast error 2.794 vs 3.068 kW. Price of risk aversion +58.05 (95% interval excludes zero); the forecast's economic value, −18.38, is not resolved by 60 days. 300/300 plans passed the independent verifier | [`reports/evaluation/rasid.json`](reports/evaluation/rasid.json) |

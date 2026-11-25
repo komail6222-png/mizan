@@ -14,8 +14,9 @@ Before writing anything, the script refuses to build unless:
   2. the exhibit and the three Spaces are exactly the pages that scripts/build_exhibit.py and
      scripts/build_spaces.py generate from that signed packet;
   3. every number on the introduction is read from reports/ (a missing value stops the build), the
-     wording "resolved" / "not resolved" matches the sign of the reported 95% intervals, and every comparison
-     the Foundation models block states in words still holds in reports/hf/;
+     wording "resolved" / "not resolved" matches the sign of the reported 95% intervals, every comparison
+     the Foundation models block states in words still holds in reports/hf/, and the test counts and where the
+     skipped tests ran match reports/application-tests.txt;
   4. no page loads a script, stylesheet, font or image from another origin.
 Exhibit pages are copied byte for byte. The introduction embeds the same signed packet and the exhibit's own
 verification code, copied from mizan/web/template.html.
@@ -110,9 +111,14 @@ def hf_facts(basira, rasid, sanad):
     intact = {k: sum(row["condition"] == "intact" for row in t["rows"]) for k, t in side.items()}
     if side["model"]["detected"] != side["baseline"]["detected"] or intact["model"] != intact["baseline"]:
         fail("BASIRA: the block says both sides detect the same defects on the same frozen items")
-    study = [basira[k]["calibration_study"]["rows"] for k in ("baseline", "model")]
-    gap = max(abs(x["marginal_mean_false_alert"] - y["marginal_mean_false_alert"]) for x, y in zip(*study)) * 100
-    precision = float(re.search(r"±([0-9.]+) percentage points", basira["baseline"]["calibration_study"]["scope"]).group(1))
+    study = [{row["m"]: row["marginal_mean_false_alert"] for row in basira[k]["calibration_study"]["rows"]} for k in ("baseline", "model")]
+    if not study[0] or study[0].keys() != study[1].keys():
+        fail("BASIRA: the two calibration studies no longer cover the same calibration sizes")
+    gap = max(abs(study[0][m] - study[1][m]) for m in study[0]) * 100
+    stated = re.search(r"±([0-9.]+) percentage points", basira["baseline"]["calibration_study"]["scope"])
+    if not stated:
+        fail("BASIRA: the study's scope no longer states the precision the block's 'roughly equal' is measured against")
+    precision = float(stated.group(1))
     if not gap <= precision:
         fail("BASIRA: the study's mean false-alert rates are no longer within its stated precision; the block calls them roughly equal")
     # RASID: lower load error, worse uncertainty ranges, and the forecast value with its interval.
@@ -124,7 +130,8 @@ def hf_facts(basira, rasid, sanad):
             and abs(fm["chronos_coverage_80_load"] - target) > abs(fb["ridge_coverage_80_load"] - target)):
         fail("RASID: the block says Chronos's uncertainty ranges score worse (pinball, CRPS and coverage)")
     pairs = {(p["policy"], p["reference"]): p for p in rasid["model"]["paired_comparisons"]}
-    if not pairs[("chronos", "candidate")]["mean_daily_difference_95ci"][0] > 0:
+    weighted = pairs[("chronos", "candidate")]
+    if not weighted["mean_daily_difference_95ci"][0] > 0:
         fail("RASID: the block says the risk-weighted Chronos plan costs more than the ridge one, a resolved difference")
     value = pairs[("chronos_risk_neutral", "candidate_risk_neutral")]
     lo, hi = value["mean_daily_difference_95ci"]
@@ -149,6 +156,9 @@ def hf_facts(basira, rasid, sanad):
         "hf_rasid_hi": signed(hi, 3),
         "hf_rasid_phrase_en": "resolved" if resolved else "not resolved",
         "hf_rasid_phrase_ar": "مؤكد" if resolved else "غير مؤكد",
+        "hf_rasid_weighted": signed(weighted["mean_daily_difference"], 3),
+        "hf_rasid_weighted_lo": signed(weighted["mean_daily_difference_95ci"][0], 3),
+        "hf_rasid_weighted_hi": signed(weighted["mean_daily_difference_95ci"][1], 3),
         "hf_sanad_lexical_r1": percent(r1["baseline"]["bilingual"]),
         "hf_sanad_e5_r1": percent(r1["model"]["bilingual"]),
         "hf_sanad_lexical_r1_en": percent(r1["baseline"]["en"]),
@@ -158,6 +168,26 @@ def hf_facts(basira, rasid, sanad):
     }
 
 
+def recorded_tests(text):
+    """The test counts the introduction states, from reports/application-tests.txt. It says that the main run passed,
+    that every test it skipped is a Hugging Face loader test, that those passed in the optional environment, and that
+    the same suite passed on Python 3.13; a record that does not show all of this stops the build."""
+    ran = re.findall(r"^Ran (\d+) tests in [0-9.]+s$", text, re.M)
+    ok = re.findall(r"^OK(?: \(skipped=(\d+)\))?$", text, re.M)
+    if len(ran) != 1 or len(ok) != 1:
+        fail("reports/application-tests.txt does not record exactly one passing run")
+    total, skipped = int(ran[0]), int(ok[0] or 0)
+    loader_skips = len(re.findall(r" \.\.\. skipped 'optional HF runtime'$", text, re.M))
+    hf = re.search(r"^# \.venv-hf result: Ran (\d+) tests in [0-9.]+s: OK\b", text, re.M)
+    if not skipped or loader_skips != skipped or not hf or int(hf.group(1)) != skipped:
+        fail("reports/application-tests.txt: the introduction says every skipped test is a model-loader test that "
+             "passed in the optional Hugging Face environment")
+    py313 = re.search(r"^# Python 3\.13\.\d+ result\b.*: Ran (\d+) tests in [0-9.]+s: OK \(skipped=(\d+)\)$", text, re.M)
+    if not py313 or (int(py313.group(1)), int(py313.group(2))) != (total, skipped):
+        fail("reports/application-tests.txt: the introduction says the same tests pass on Python 3.13")
+    return {"tests": str(total), "tests_run": str(total - skipped), "tests_skipped": str(skipped), "tests_hf": hf.group(1)}
+
+
 def facts(packet):
     """Every figure the introduction states, read from reports/. Missing keys raise KeyError and stop the build."""
     sanad = load("reports/evaluation/sanad.json")
@@ -165,10 +195,7 @@ def facts(packet):
     basira = load("reports/evaluation/basira.json")
     rasid = load("reports/evaluation/rasid.json")
     safety = load("reports/safety/safety.json")["summary"]
-    tests_log = (ROOT / "reports/application-tests.txt").read_text(encoding="utf-8")
-    ran = re.search(r"^Ran (\d+) tests", tests_log, re.M)
-    if not ran or not re.search(r"^OK\b", tests_log, re.M):
-        fail("reports/application-tests.txt does not record a passing run")
+    tests = recorded_tests((ROOT / "reports/application-tests.txt").read_text(encoding="utf-8"))
     pairs = {(p["policy"], p["reference"]): p for p in rasid["paired_comparisons"]}
     premium = pairs[("candidate", "candidate_risk_neutral")]
     forecast = pairs[("candidate_risk_neutral", "seasonal_naive")]
@@ -178,7 +205,6 @@ def facts(packet):
     lo, hi = forecast["mean_daily_difference_95ci"]
     if not lo < 0 < hi:
         fail("the forecast-value interval no longer includes zero; the introduction calls it not resolved")
-    far = Decimal(str(basira["calibration_study"]["shipped_calibration"]["long_run_false_alert_estimate"])) * 100
     passed, total = (int(x) for x in safety["rasid_invalid_mutations_rejected"].split("/"))
     return {
         "receipts": str(len(packet["run"]["receipts"])),
@@ -189,8 +215,8 @@ def facts(packet):
         "sim_mut": safety["simulation_mutants_caught"],
         "rasid_rejected": group(passed),
         "rasid_invalid": group(total),
-        "tests": ran.group(1),
-        "basira_far": str(far.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)) + "%",
+        **tests,
+        "basira_far": percent(basira["calibration_study"]["shipped_calibration"]["long_run_false_alert_estimate"]),
         "pac_min": str(basira["calibration_study"]["minimum_m_for_pac"]),
         "mae_ridge": f"{rasid['ridge_mae_kw']:.3f}",
         "mae_naive": f"{rasid['seasonal_naive_mae_kw']:.3f}",

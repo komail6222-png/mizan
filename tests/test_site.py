@@ -37,12 +37,39 @@ class FoundationModelFactsTests(unittest.TestCase):
             "hf_rasid_mae": "2.572", "hf_rasid_mae_ridge": "2.794", "hf_rasid_days": "60",
             "hf_rasid_value": "−0.135", "hf_rasid_lo": "−0.507", "hf_rasid_hi": "+0.154",
             "hf_rasid_phrase_en": "not resolved", "hf_rasid_phrase_ar": "غير مؤكد",
+            "hf_rasid_weighted": "+1.060", "hf_rasid_weighted_lo": "+0.328", "hf_rasid_weighted_hi": "+1.641",
             "hf_sanad_lexical_r1": "96.9%", "hf_sanad_e5_r1": "80.5%",
             "hf_sanad_lexical_r1_en": "61.1%", "hf_sanad_e5_r1_en": "77.7%",
             "hf_sanad_lexical_r1_ar": "60.2%", "hf_sanad_e5_r1_ar": "72.5%",
         }
         self.assertEqual({k: self.figures.get(k) for k in expected}, expected)
         self.assertEqual(hf_facts(), {k: v for k, v in self.figures.items() if k.startswith("hf_")})
+        # Study rows are paired by calibration size, not by position.
+        basira = copy.deepcopy(HF["basira"])
+        basira["model"]["calibration_study"]["rows"].reverse()
+        self.assertEqual(hf_facts(basira=basira), hf_facts())
+
+    def test_test_counts_are_read_from_the_record_and_fail_closed(self):
+        record = (ROOT / "reports/application-tests.txt").read_text(encoding="utf-8")
+        counts = build_site.recorded_tests(record)
+        self.assertEqual({k: v for k, v in self.figures.items() if k.startswith("tests")}, counts)
+        total, skipped = int(re.search(r"^Ran (\d+) tests", record, re.M).group(1)), int(re.search(r"^OK \(skipped=(\d+)\)$", record, re.M).group(1))
+        self.assertEqual(counts, {"tests": str(total), "tests_run": str(total - skipped), "tests_skipped": str(skipped), "tests_hf": str(skipped)})
+        hf_line = re.search(r"^# \.venv-hf result: .*$", record, re.M).group(0)
+        py313_line = re.search(r"^# Python 3\.13\.\d+ result.*$", record, re.M).group(0)
+        broken = {  # each record the introduction's sentence would misdescribe
+            "the main run failed": record.replace(f"\nOK (skipped={skipped})\n", f"\nFAILED (failures=1, skipped={skipped})\n"),
+            "a skip that is not a model-loader test": record.replace(" ... skipped 'optional HF runtime'", " ... skipped 'FastAPI missing'", 1),
+            "the skipped tests were not run elsewhere": record.replace(hf_line + "\n", ""),
+            "fewer tests passed in the HF environment than were skipped": record.replace(hf_line, hf_line.replace(f"Ran {skipped} tests", f"Ran {skipped - 1} tests")),
+            "the HF environment run failed": record.replace(hf_line, hf_line.replace(": OK", ": FAILED")),
+            "no Python 3.13 run": record.replace(py313_line + "\n", ""),
+            "a different suite on Python 3.13": record.replace(py313_line, py313_line.replace(f"Ran {total} tests", f"Ran {total - 1} tests")),
+        }
+        for name, text in broken.items():
+            with self.subTest(name), self.assertRaises(SystemExit):
+                self.assertNotEqual(text, record)
+                build_site.recorded_tests(text)
 
     def test_rasid_phrase_follows_the_sign_of_the_interval(self):
         for (lo, hi), en, ar in [((-0.5, 0.2), "not resolved", "غير مؤكد"), ((0.1, 0.4), "resolved", "مؤكد"),
@@ -70,6 +97,8 @@ class FoundationModelFactsTests(unittest.TestCase):
             "risk-weighted Chronos plan no longer resolved costlier": (change("rasid", ["model", "paired_comparisons", 2, "mean_daily_difference_95ci"], [-0.1, 1.6]), "risk-weighted"),
             "a gate that did not pass": (change("rasid", ["gate", "passed"], False), "rasid.json: .*gate passed"),
             "a repeat run that was not identical": (change("sanad", ["repeat_run", "identical"], False), "sanad.json: .*repeat run was identical"),
+            "a study scope without its stated precision": (change("basira", ["baseline", "calibration_study", "scope"], "Generated rings only."), "precision"),
+            "study sizes that no longer match": (change("basira", ["model", "calibration_study", "rows", 2, "m"], 200), "calibration sizes"),
         }
         for name, (changed, message) in cases.items():
             with self.subTest(name), self.assertRaisesRegex(SystemExit, message):
@@ -90,11 +119,27 @@ class FoundationModelFactsTests(unittest.TestCase):
                     figures = block.group(1) if model in ("hf_basira_false", "hf_rasid_mae", "hf_sanad_e5_r1") else spans
                     self.assertIn(self.figures[model], figures, model)
                     self.assertIn(self.figures[current], figures, current)
-                for key in ("hf_rasid_value", "hf_rasid_lo", "hf_rasid_hi", f"hf_rasid_phrase_{lang}"):
+                for key in ("hf_rasid_value", "hf_rasid_lo", "hf_rasid_hi", f"hf_rasid_phrase_{lang}",
+                            "hf_rasid_weighted", "hf_rasid_weighted_lo", "hf_rasid_weighted_hi"):
                     self.assertIn(self.figures[key], spans, key)
         self.assertIn('href="report/#hf-section"', block.group(1))
         report = (ROOT / "reports/evaluation/index.html").read_text(encoding="utf-8")
         self.assertIn('<section id="hf-section"', report, "the link's target exists in the report page")
+
+    def test_landing_states_the_test_counts_and_keeps_arabic_figures_left_to_right(self):
+        page, _ = build_site.landing_html(self.packet, self.figures)
+        row = re.search(r"<li>((?:(?!</li>).)*application-tests\.txt</a></li>)", page, re.S).group(1)
+        for lang in ("en", "ar"):
+            spans = "".join(re.findall(rf'<span data-l="{lang}">(.*?)</span>', row, re.S))
+            with self.subTest(lang=lang):
+                self.assertIn(self.figures["tests_run"], spans)
+                self.assertIn(self.figures["tests_hf"], spans)
+        # In Arabic prose a signed figure or a percentage sits in a left-to-right isolate, so its sign stays left of
+        # the digits and its % on the right, wherever the line breaks.
+        arabic = "".join(re.findall(r'<span data-l="ar">(.*?)</span>', page, re.S))
+        loose = re.sub(r'<bdi dir="ltr">[^<]*</bdi>', "", arabic)
+        self.assertEqual(re.findall(r"[+−]\d[\d.,]*|\d[\d.,]*%", loose), [])
+        self.assertIn('<bdi dir="ltr">', arabic)
 
 
 if __name__ == "__main__":
