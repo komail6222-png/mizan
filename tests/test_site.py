@@ -4,6 +4,7 @@ import json
 import re
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from mizan.core.contract import strict_load
 from scripts import build_site
@@ -117,6 +118,20 @@ class FoundationModelFactsTests(unittest.TestCase):
         stale["source"]["files"]["reports/hf/rasid.json"] = "0" * 64
         with self.assertRaisesRegex(SystemExit, "derive_hf_intervals"):
             build_site.check_derived(stale)
+
+    def test_the_3_0_error_interval_must_be_that_of_the_shipped_errors(self):
+        real = build_site.load
+
+        def load(path):  # the derived ridge and seasonal-naive errors no longer match reports/evaluation/rasid.json
+            data = real(path)
+            if path == build_site.INTERVALS:
+                for c in data["comparisons"]:
+                    if c["comparison"] == "ridge_minus_seasonal_naive_load_mae":
+                        c["mean_a"] += 0.01
+            return data
+        with mock.patch.object(build_site, "load", load), mock.patch.object(build_site, "check_derived", lambda intervals: None), \
+                self.assertRaisesRegex(SystemExit, "ridge and seasonal-naive errors"):
+            build_site.facts(self.packet)
 
     def test_wording_that_no_longer_matches_the_evidence_stops_the_build(self):
         def change(kind, path, value):
