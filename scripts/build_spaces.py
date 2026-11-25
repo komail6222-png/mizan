@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from mizan.demos import exhibit_html  # noqa: E402
+OFL = ROOT / "mizan/web/fonts/OFL-ReadexPro.txt"
 SPACES = {
     "sanad": ("Bilingual UPS procurement", "📑", ["evidence"]),
     "basira": ("Few-shot surface inspection", "🔍", ["crack", "intact", "scarce"]),
@@ -33,8 +34,11 @@ def build(source, destination):
                   f"# {kind.upper()} | {title}\n\n{DESCRIPTIONS[kind]}\n\n"
                   "This interactive exhibit replays recorded local CPU runs on generated fixtures. "
                   "The page re-verifies every SHA-256 digest and Ed25519 receipt in your browser and exports them as JSON. "
-                  "The full source release supplies the input importer, live job API, baselines and verification script.\n")
+                  "The full source release supplies the input importer, live job API, baselines and verification script.\n\n"
+                  "The page embeds the Readex Pro typeface, licensed under the SIL Open Font License 1.1 (OFL-ReadexPro.txt).\n")
         (folder / "README.md").write_text(readme, encoding="utf-8")
+        # Each Space is its own repository and embeds Readex Pro, so it carries the typeface's licence.
+        (folder / "OFL-ReadexPro.txt").write_bytes(OFL.read_bytes())
 
 
 if __name__ == "__main__":

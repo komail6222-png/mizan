@@ -7,13 +7,13 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Live demo](https://img.shields.io/badge/live%20demo-GitHub%20Pages-2ea44f)](https://komail6222-png.github.io/mizan/)
 
-**[Live demo](https://komail6222-png.github.io/mizan/)**: the exhibit recomputes every SHA-256 digest and Ed25519 signature in your browser. · [Evaluation report](https://komail6222-png.github.io/mizan/report/) · [العربية](README.ar.md)
+**[Live demo](https://komail6222-png.github.io/mizan/)**: a scale weighs seven signed results in your browser, recomputing every SHA-256 digest and Ed25519 signature; change one digit and it tips. In English and Arabic. · [Explore the exhibit](https://komail6222-png.github.io/mizan/exhibit/) · [Evaluation report](https://komail6222-png.github.io/mizan/report/) · [العربية](README.ar.md)
 
 MIZAN runs three local decision systems under one discipline. **SANAD** reviews bilingual (Arabic/English) procurement documents against tender rules and cites the exact text behind every verdict. **BASIRA** inspects parts with calibrated anomaly detection and states what its calibration actually guarantees. **RASID** plans a battery day under risk and has an independent verifier check every plan. Each result goes through the same broker, isolated worker, verifier and signed publication, whether a human or an AI agent asked for it. All bundled data is generated.
 
-![Try a tampered copy: the exhibit verifies 7 of 7 signed results in the browser, then rejects a copy with one changed digit](docs/screenshots/tampered-copy.gif)
+![The live page weighs seven signed results in the browser until the scale is level, then a copy with one changed digit tips it and is rejected](docs/screenshots/tampered-copy.gif)
 
-<sub>The live exhibit verifies all 7 signed results in the browser. "Try a tampered copy" changes one digit, and the copy is rejected.</sub>
+<sub>The live page recomputes all 7 signatures in the browser; each match adds a weight until the scale is level. "Change one digit" breaks one signature and the scale tips.</sub>
 
 ## How a decision becomes trustworthy
 
@@ -63,16 +63,17 @@ Every number below comes from a file in [`reports/`](reports/). All inputs are g
 
 | Claim | Result | Source |
 |---|---|---|
-| Application tests | 102/102 passed, on Python 3.12 and 3.13 | [`reports/application-tests.txt`](reports/application-tests.txt), [`reports/local-verification.md`](reports/local-verification.md) |
+| Application tests | 172/172 passed. On Python 3.12 and 3.13, 168 ran and the 4 model-loader tests skipped without torch; those 4 passed in the optional Hugging Face environment against the verified checkpoints | [`reports/application-tests.txt`](reports/application-tests.txt) |
 | SANAD never approves wrongly on its test sets | 36/36 original cases, 16/16 grammar-2 cases (Arabic typography and units, acknowledged and forged context), 16/16 multi-model tables; **0 false MEETS**. Baselines: numeric-only rule 24/36; first-number table reader 2/16 with 2 false MEETS | [`reports/evaluation/sanad.json`](reports/evaluation/sanad.json) |
 | BASIRA detects defects and is honest about false alerts | 40/40 generated defects flagged, 8/40 intact parts flagged (pixel baseline: 3/40 and 1/40). The shipped bank's long-run false-alert rate is about 12.9%; the optional PAC rule keeps banks above 5% to 4.3% (m = 50) and 1.5% (m = 100) | [`reports/evaluation/basira.json`](reports/evaluation/basira.json) |
-| RASID separates forecast value from risk aversion | Forecast error 2.794 vs 3.068 kW. Price of risk aversion +58.05 (95% interval excludes zero); the forecast's economic value, −18.38, is not resolved by 60 days. 300/300 plans passed the independent verifier | [`reports/evaluation/rasid.json`](reports/evaluation/rasid.json) |
+| RASID separates forecast value from risk aversion | Forecast error 2.794 vs 3.068 kW (paired daily difference −0.274 kW, 95% interval −0.559 to +0.056: not resolved). Price of risk aversion +58.05 (95% interval excludes zero); the forecast's economic value, −18.38, is not resolved by 60 days. 300/300 plans passed the independent verifier | [`reports/evaluation/rasid.json`](reports/evaluation/rasid.json), [`reports/hf/rasid_intervals.json`](reports/hf/rasid_intervals.json) |
+| Pinned Hugging Face models, measured against the current components (3.1, unreleased) | Each model frozen in place of one component, on the same held-out data, behind a fidelity gate: the new harness first reproduced the current component's results (the shipped ones for BASIRA and RASID, its own across two runs for SANAD). **BASIRA, DINOv2-small:** 1/40 false alerts against 8/40 on one calibration bank, 40/40 defects for both; over 400 banks per size the mean false-alert rates are roughly equal, as split conformal predicts for any descriptor. **RASID, Chronos-Bolt-tiny:** load MAE 2.572 vs 2.794 kW, a paired daily difference of −0.221 kW (95% interval −0.698 to +0.118), not resolved, and neither are the pinball-loss and CRPS differences; its 80% ranges cover fewer load hours (65.1% vs 74.7%), resolved. With the same risk-neutral planner −0.135 per day (95% interval −0.507 to +0.154), not resolved; risk-weighted +1.060 per day (interval excludes zero), a result the fixed rule that turns quantiles into scenarios shapes as well as the forecaster. **SANAD, multilingual-E5-small:** recall@1 80.5% vs 96.9% with the engine's bilingual query, which is exactly the labels the grammar accepts (near the lexical ceiling); 77.7% vs 61.1% with the English label alone and 72.5% vs 60.2% with the Arabic label alone, a gain that is entirely cross-lingual: on datasheets in the query's own language E5 ranks the claim first less often (85.8% vs 100.0% in English, 77.5% vs 94.0% in Arabic); no interval is reported for SANAD. The deployed engines are unchanged | [`reports/hf/`](reports/hf/) |
 | The coordinator is safe under crashes | 40,000 deterministic-simulation steps on the real broker, 0 violations; 2/2 deliberately broken fences caught | [`reports/safety/safety.json`](reports/safety/safety.json) |
 | The tests have teeth | 4,653 SANAD relation checks (4/4 broken engines caught), 9,000 BASIRA property checks, 1,600/1,600 invalid battery plans rejected; 0 violations | [`reports/safety/safety.json`](reports/safety/safety.json) |
-| The exhibit verifies itself | 7/7 signed results verified in Chrome at 1280 px and 390 px, tampered copy rejected, 0 external requests | [`reports/browser-checks.json`](reports/browser-checks.json) |
+| The exhibit verifies itself | 7/7 signed results verified in Chrome at 1280 px and 390 px, tampered copy rejected, 0 external requests. Text colours meet WCAG AA: 0 failures in 3,608 text-element checks over the exhibit views, Spaces, both report pages (light and dark) and the introduction in English and Arabic; keyboard focus stays on redrawn controls | [`reports/browser-checks.json`](reports/browser-checks.json) |
 | Reproducible on another machine | SANAD and BASIRA identical; RASID within 0.002% (different equally optimal solver schedule), same conclusions; HTTP API, PDF import and MCP exercised | [`reports/local-verification.md`](reports/local-verification.md) |
 
-Release notes with the full evidence: [`docs/RELEASE_3.0.md`](docs/RELEASE_3.0.md). Acceptance map and open gates: [`docs/QUALIFICATION.md`](docs/QUALIFICATION.md).
+Release notes with the full evidence: [`docs/RELEASE_3.0.md`](docs/RELEASE_3.0.md), and for the Hugging Face evaluation [`docs/RELEASE_3.1.md`](docs/RELEASE_3.1.md) (unreleased). Acceptance map and open gates: [`docs/QUALIFICATION.md`](docs/QUALIFICATION.md).
 
 ## Limitations
 
@@ -88,7 +89,7 @@ MIZAN was built with AI coding agents. My role was direction, review and verific
 
 ## Documentation
 
-[Technical guide](docs/TECHNICAL_GUIDE.md) · [Release 3.0](docs/RELEASE_3.0.md) · [Qualification record](docs/QUALIFICATION.md) · [Local verification](reports/local-verification.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Design history](docs/design/) · [Arabic guide](START_HERE_AR.md)
+[Technical guide](docs/TECHNICAL_GUIDE.md) · [Release 3.0](docs/RELEASE_3.0.md) · [Release 3.1 (unreleased)](docs/RELEASE_3.1.md) · [Qualification record](docs/QUALIFICATION.md) · [Local verification](reports/local-verification.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Design history](docs/design/) · [Arabic guide](START_HERE_AR.md)
 
 ## License and citation
 

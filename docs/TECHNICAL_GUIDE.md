@@ -129,16 +129,41 @@ Real transcripts usually contain titles, revision lines or page footers. Under g
 
 `spaces/sanad/`, `spaces/basira/` and `spaces/rasid/` each contain an independently usable static Space repository. Each has its own README, index, data and receipts. Upload the *contents of the selected Space folder* if you choose to publish that exhibit. Recorded exhibits contain generated samples. User files, tokens, model caches and signing keys stay in the private local runtime directory. [Static Spaces documentation](https://huggingface.co/docs/hub/spaces-sdks-static)
 
-Three optional model experiments are present in `mizan/models.py`. They import a fixed revision, verify weights and companion files, sign the local import manifest, and verify it again before offline use. The signer's trust directory must be controlled by the operator. The optional experiments require new downloads and their own dependency resolution. None of the reported benchmark numbers used these checkpoints. Run in a separate environment if you choose to compare them.
+Three optional model experiments are present in `mizan/models.py`. They import a fixed revision, verify weights and companion files, sign the local import manifest, and verify it again before offline use. The signer's trust directory must be controlled by the operator. The optional experiments require new downloads and their own dependency resolution. The 3.0 benchmark numbers did not use these checkpoints; `reports/hf/` compares each of them with the current component on the held-out protocol (`docs/RELEASE_3.1.md`). The local control plane, strict parser, calibrated detector and MILP operate independently of those experiments.
+
+### Reproducing `reports/hf/`
+
+The models need torch, so they run in a separate environment, `.venv-hf`, never in `.venv`. These are the commands the recorded environment was created with (uv, Python 3.12.16, Linux x86_64), with torch pinned to the recorded build:
 
 ```bash
-python -m pip install -r requirements-hf.txt
-python -m mizan hf pins sanad
-python -m mizan hf fetch sanad
-python -m mizan hf compare sanad
+uv venv --python 3.12 .venv-hf
+uv pip install --python .venv-hf/bin/python -r requirements.txt -e .
+uv pip install --python .venv-hf/bin/python --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+uv pip install --python .venv-hf/bin/python -r requirements-hf.txt
 ```
 
-Substitute `basira` for DINOv2 or `rasid` for Chronos-Bolt. The local control plane, strict parser, calibrated detector and MILP operate independently of those experiments.
+Install torch from the CPU index first, as above. Do not install `requirements-hf.txt` on its own: it pins `torch==2.15.0`, and PyPI serves that version as a CUDA build, not the recorded `2.15.0+cpu`. `requirements-hf.txt` pins only the packages the harness uses directly; their dependencies are not pinned there. `requirements-hf.lock.txt` lists every package of the environment that produced `reports/hf` (`uv pip freeze` of that `.venv-hf`, MIZAN itself left out). To reproduce that set exactly, use it in place of the last two lines: install torch from the CPU index as above, then `uv pip install --python .venv-hf/bin/python -r requirements-hf.lock.txt -e .`. This lock-file route has been checked only against the existing environment, not from a clean one.
+
+Import and verify the three pinned checkpoints into `var/hf`, the default cache (`hf pins` shows a pin, `hf compare` runs the older single-item experiment):
+
+```bash
+.venv-hf/bin/python -m mizan hf fetch sanad
+.venv-hf/bin/python -m mizan hf fetch basira
+.venv-hf/bin/python -m mizan hf fetch rasid
+```
+
+Then run the comparison into a scratch directory, with its repeat run, and compare the result with the published files:
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv-hf/bin/python scripts/evaluate_hf.py --models var/hf --out /tmp/hf --repeat
+for k in basira rasid sanad; do diff <(python -m json.tool reports/hf/$k.json) <(python -m json.tool /tmp/hf/$k.json); done
+```
+
+On another machine these fields differ by design: `elapsed_seconds` and `repeat_run.elapsed_seconds` (wall time), `environment` (versions, thread variables and the CPU name), and `identity.manifest_sha256` (the SHA-256 of that machine's own signed import; `identity.manifest_object` is the same for every import of the pin). Two texts also differ because their wording was corrected after the published run: `settings.quantile_repair` in `rasid.json` (solar is clipped before planning and never scored) and `notes` in `sanad.json` (the one-label queries are read by datasheet language). Any other difference means the numerical environment differs, for example another SciPy, whose MILP solver can return different plans for the ridge risk-weighted policy (see the disclosures in `docs/RELEASE_3.1.md`).
+
+Resources, measured on the recording machine (Intel Core i7-13645HX, WSL2 with 7 GiB of memory): the full `--repeat` run peaked at 1.1 GB resident memory (`/usr/bin/time -v`) and took about 29.5 minutes of compute, almost all of it BASIRA (868.8 s and 850.5 s for its two runs); RASID and SANAD take seconds. On disk, `var/hf` takes 588 MB and `.venv-hf` 1.3 GB (`du -sh`). No GPU is used.
+
+`reports/hf` holds the published evidence. `--out` is required, and `reports/hf` is written only with `--repeat`, by the canonical command `python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat`; write anywhere else to check or experiment. After a new evidence run, also run `python scripts/derive_hf_intervals.py` (torch-free): `reports/hf/rasid_intervals.json` is derived from `rasid.json`, and a test requires the two to agree.
 
 ## Recovery and qualification
 

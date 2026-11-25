@@ -1,70 +1,328 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MIZAN · AI engineering lab</title><style>
-:root{--ink:#142c37;--muted:#4e6771;--bg:#edf2ef;--card:#fff;--line:#d6e0da;--teal:#00685c;--pale:#ddf3e9;--warn:#81431a;--amber:#fff0d6;--blue:#3463a0}
-*{box-sizing:border-box}body{margin:0;font:15px/1.5 Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink)}
-header{background:#112c33;color:white;border-bottom:4px solid #46bb94}header>div,main,footer{max-width:1120px;margin:auto;padding:19px 28px}header>div{display:flex;align-items:center;justify-content:space-between}.brand{font-weight:800;font-size:21px;letter-spacing:.07em}.arab{font-size:18px;font-weight:500;color:#aadacb;margin-left:10px}.stamp{font-size:12px;color:#c4d6d4}main{padding-top:28px}h1{font-size:clamp(26px,5vw,43px);letter-spacing:-.045em;line-height:1.1;margin:12px 0}h2{font-size:21px;letter-spacing:-.03em;line-height:1.25;margin:3px 0 14px}h3{font-size:15px;margin:0 0 8px}p{margin:7px 0}.muted,.hint{color:var(--muted)}.hint{font-size:13px}
-nav{display:flex;gap:6px;padding-bottom:17px;border-bottom:1px solid var(--line);flex-wrap:wrap}button,select{font:inherit}nav button,.switch button,.dl{cursor:pointer;border-radius:8px;background:#fff;color:var(--ink);border:1px solid #b9cbc3;padding:8px 14px;min-height:41px;font-weight:650}nav button[aria-pressed=true],.switch button[aria-pressed=true]{color:white;background:var(--teal);border-color:var(--teal)}button:focus-visible,select:focus-visible{outline:3px solid #e0a22f;outline-offset:2px}.switch{display:flex;gap:5px;flex-wrap:wrap;margin:13px 0 19px}.switch button{font-size:13px;min-height:36px;padding:5px 12px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:14px 0}.card{padding:20px;border-radius:12px;border:1px solid var(--line);background:var(--card);min-width:0}.wide{grid-column:1/-1}.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.kpi small{color:var(--muted);display:block}.kpi strong{font-size:clamp(19px,3vw,29px);letter-spacing:-.04em}.badge{display:inline-block;font-weight:700;font-size:12px;padding:3px 9px;border-radius:5px;background:var(--pale);color:#135d4e}.review{background:var(--amber);color:var(--warn)}.bad{background:#fbe6e3;color:#822d2c}
-.rule{display:flex;align-items:center;justify-content:space-between;width:100%;border:0;background:transparent;border-top:1px solid var(--line);padding:12px 2px;color:var(--ink);text-align:left;cursor:pointer}.rule[aria-pressed=true]{background:#eff9f4}.proof{border-left:3px solid #66ad92;padding:7px 11px;margin:12px 0;background:#f4f8f5}.proof q{font-size:17px;display:block;margin:5px 0}.mini{overflow-wrap:anywhere;font-size:12px;color:var(--muted);overflow-wrap:anywhere}.images{display:grid;grid-template-columns:1fr 1fr;gap:12px}figure{margin:0}figure img{width:100%;max-height:225px;object-fit:contain;background:#232927;border-radius:7px}figcaption{font-size:13px;margin-top:5px}.metricrow{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0;gap:12px}.mono{font-family:ui-monospace,monospace}.chart{width:100%;height:202px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:right;padding:6px 3px;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}details{margin:13px 0}summary{cursor:pointer;font-weight:650}.dl{margin:8px 0}.key{color:var(--teal);font-weight:700;font-size:12px;letter-spacing:.07em;text-transform:uppercase}footer{color:var(--muted);font-size:12px;padding-top:0}.hidden{display:none!important}.trust{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 14px;margin:0 0 16px}.trust .ok{background:#ddf3e9;color:#135d4e}.trust b{font-size:14px}.trust .hint{flex:1 1 320px;margin:0}.trust details{flex-basis:100%;margin:2px 0 0}.trust table td,.trust table th{text-align:left}.trust button{cursor:pointer;border-radius:8px;background:#fff;border:1px solid #b9cbc3;padding:5px 10px;font-weight:650;font-size:13px}
-@media(max-width:700px){.grid{grid-template-columns:1fr}.card{padding:15px}main,header>div,footer{padding-left:16px;padding-right:16px}.kpis{gap:5px}.kpi small{font-size:12px}.stamp{max-width:115px;text-align:right}.brand{font-size:18px}}
-</style></head><body><header><div><span class="brand">MIZAN <span lang="ar" class="arab">ميزان</span></span><span class="stamp">Local CPU · Synthetic fixtures</span></div></header>
-<main><section id="trust" class="trust" aria-live="polite"><span class="badge review">Verifying…</span><span class="hint">Recomputing every signature in this browser.</span></section><nav aria-label="Products" id="tabs"></nav><section id="view" aria-live="polite"></section>
-<details><summary>Run evidence</summary><p class="hint">Each result below was verified and committed by the local coordinator. This exhibit replays those recorded decisions.</p><div id="runs"></div><button class="dl" id="download">Download run JSON</button></details></main>
-<footer>MIZAN · Public sample data · Energy costs are illustrative currency units.</footer>
+<meta name="color-scheme" content="light">
+<title>MIZAN exhibit</title><style>
+/* Readex Pro: Copyright 2018 The Readex Pro Project Authors (https://github.com/ThomasJockin/readexpro), with Reserved Font Name "RevReading Lexend". Licensed under the SIL Open Font License, Version 1.1 (OFL-1.1); the licence text is OFL-ReadexPro.txt, in mizan/web/fonts/ of the MIZAN source. */
+@font-face{font-family:"Readex";src:url(data:font/woff2;base64,%%FONT_WOFF2%%) format("woff2");font-weight:160 700;font-display:swap}
+:root{--paper:#e6eaee;--sheet:#f5f7f8;--ink:#0e1c36;--ink2:#2a3954;--graphite:#56637c;--rule:#c8d0d9;--rule2:#dbe1e7;
+ --brass:#8a5f1c;--brass-lite:#e4c68b;--verdigris:#256b5b;--verdigris-wash:#dcece7;--breach:#b0351f;--breach-wash:#f6dfd9;
+ --caution:#875a07;--caution-wash:#f4e6c9;--focus:#8a5f1c}
+*{box-sizing:border-box}
+html{background:var(--paper)}
+body{margin:0;color:var(--ink);background:var(--paper);font:350 16px/1.55 "Readex",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:inherit}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:4px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 32px}
+.num,table,.kpis,.metric{font-variant-numeric:tabular-nums}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;letter-spacing:0}
+
+/* Header: a light instrument plate, not a dark slab */
+.top{border-bottom:1px solid var(--rule)}
+.top .wrap{display:flex;align-items:center;gap:18px;min-height:72px;flex-wrap:wrap}
+.mark{display:flex;align-items:center;gap:10px;text-decoration:none}
+.mark svg{width:34px;height:28px}
+.word{font-weight:640;font-size:21px;letter-spacing:.06em;font-variation-settings:"HEXP" 70}
+.ar{font-weight:450;font-size:19px;color:var(--brass)}
+.where{margin:0;color:var(--graphite);font-size:14px;flex:1 1 220px}
+.about{font-size:14px;font-weight:500;text-decoration:none;border-bottom:1px solid var(--brass-lite);padding-bottom:1px}
+.about:hover{border-color:var(--brass)}
+
+/* Balance glyph, shared by header and seal */
+.beam path,.beam circle{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.beam .arm{transform-origin:24px 11px;transition:transform .7s cubic-bezier(.2,1.6,.4,1)}
+.tipped .beam .arm{transform:rotate(-14deg)}
+
+/* Seal strip: the in-browser verification result */
+.seal{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:6px 18px;margin:28px 0 8px;padding:16px 20px;background:var(--sheet);border:1px solid var(--rule);border-radius:14px}
+.seal .beamwrap{grid-row:span 2;color:var(--verdigris);display:flex}
+.seal .beamwrap svg{width:46px;height:38px}
+.seal.failed .beamwrap,.seal.tipped .beamwrap{color:var(--breach)}
+.seal .state{font-weight:600;font-size:17px}
+.seal .ok{color:var(--verdigris)}
+.seal .bad{color:var(--breach)}
+.seal .pending{color:var(--caution)}
+.seal .hint{grid-column:2;margin:0;color:var(--graphite);font-size:14px;max-width:72ch}
+.seal button{grid-row:1/span 2;grid-column:3;cursor:pointer;border:1px solid var(--ink);background:transparent;border-radius:999px;padding:9px 18px;font-weight:550;font-size:14px;max-width:340px;text-align:center}
+.seal button:hover{background:var(--ink);color:var(--sheet)}
+.seal.tipped button{border-color:var(--breach);color:var(--breach);background:var(--breach-wash)}
+.seal.tipped .hint{color:var(--breach)}
+.seal details{grid-column:1/-1;margin:6px 0 0;border-top:1px solid var(--rule2);padding-top:8px}
+.seal summary{cursor:pointer;font-size:14px;font-weight:500;color:var(--ink2)}
+.seal table{margin-top:8px}
+.seal td,.seal th{text-align:left}
+
+/* Product selector */
+#tabs{display:flex;gap:0;margin:26px 0 0;border-bottom:1px solid var(--rule)}
+#tabs button{cursor:pointer;background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-1px;padding:12px 22px 11px;font-weight:600;font-size:15px;letter-spacing:.1em;color:var(--graphite);font-variation-settings:"HEXP" 50}
+#tabs button:hover{color:var(--ink)}
+#tabs button[aria-pressed=true]{color:var(--ink);border-bottom-color:var(--brass)}
+
+/* View */
+#view{padding:34px 0 10px;min-height:60vh}
+.lede{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:20px 48px;align-items:end;margin-bottom:26px}
+.kind{margin:0 0 10px;color:var(--brass);font-weight:550;font-size:14.5px}
+h1{margin:0;font-weight:610;font-size:clamp(30px,5vw,50px);line-height:1.03;letter-spacing:-.025em;font-variation-settings:"HEXP" 28}
+.lede p.sub{margin:0;color:var(--ink2);font-size:16.5px;max-width:52ch}
+h2{margin:0 0 14px;font-size:18px;font-weight:600;letter-spacing:-.005em}
+h3{margin:0 0 6px;font-size:15px;font-weight:600}
+p{margin:8px 0}
+.hint{color:var(--graphite);font-size:14px}
+.switch{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;background:var(--sheet);border:1px solid var(--rule);border-radius:12px;margin:0 0 26px}
+.switch button{cursor:pointer;border:0;background:transparent;border-radius:9px;padding:9px 16px;font-size:14.5px;font-weight:500;color:var(--ink2)}
+.switch button:hover{background:var(--rule2)}
+.switch button[aria-pressed=true]{background:var(--ink);color:var(--sheet)}
+.work{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:28px;align-items:start}
+.work.even{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.pane{min-width:0}
+.sheet{background:var(--sheet);border:1px solid var(--rule);border-radius:14px;padding:22px 24px}
+.span{grid-column:1/-1}
+#view>.span{margin-top:18px}
+.sheet h3{margin-top:18px}
+.foot-note{grid-column:1/-1;color:var(--graphite);font-size:13.5px;margin:4px 0 0}
+
+/* Verdict chips */
+.chip{display:inline-flex;align-items:center;gap:6px;font-weight:560;font-size:13px;padding:3px 11px;border-radius:999px;white-space:nowrap;background:var(--verdigris-wash);color:var(--verdigris)}
+.chip.review{background:var(--caution-wash);color:var(--caution)}
+.chip.bad{background:var(--breach-wash);color:var(--breach)}
+.verdict{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.verdict .big{font-size:24px;font-weight:600;letter-spacing:-.01em}
+.verdict .big.ok{color:var(--verdigris)}.verdict .big.review{color:var(--caution)}.verdict .big.bad{color:var(--breach)}
+.verdict .big::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;background:currentColor;margin-right:10px;vertical-align:.12em}
+
+/* SANAD */
+.rules{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
+.rule{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;border:0;border-bottom:1px solid var(--rule);background:transparent;padding:15px 14px 15px 16px;text-align:left;cursor:pointer;position:relative;color:var(--ink)}
+.rule::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:transparent}
+.rule:hover{background:var(--sheet)}
+.rule[aria-pressed=true]{background:var(--sheet)}
+.rule[aria-pressed=true]::before{background:var(--brass)}
+.rule .req{font-size:15.5px}
+.proof{margin:16px 0 0;padding:16px 18px;border-radius:10px;background:#fff;border:1px solid var(--rule2);position:relative}
+.proof .doc{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13.5px;color:var(--graphite)}
+.proof .doc b{color:var(--ink);font-weight:560}
+.proof q{display:block;margin:10px 0 8px;font-size:21px;line-height:1.35;font-weight:450;quotes:none}
+.proof q mark{background:linear-gradient(transparent 58%,var(--brass-lite) 58%);color:inherit;padding:0 1px}
+.where-in{font-size:13px;color:var(--graphite)}
+.versus{display:flex;align-items:center;gap:10px;margin:14px 0 0;color:var(--caution);font-size:14px;font-weight:500}
+.versus::before,.versus::after{content:"";flex:1;height:1px;background:var(--rule)}
+
+/* BASIRA */
+.compare{position:relative;aspect-ratio:1;max-width:420px;border-radius:12px;overflow:hidden;background:#20262b;cursor:crosshair;touch-action:none}
+.compare img{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;display:block}
+.compare .ov{position:absolute;inset:0}
+.compare .edge{position:absolute;top:0;bottom:0;width:2px;background:var(--brass-lite);box-shadow:0 0 0 1px rgba(0,0,0,.25);pointer-events:none}
+.compare .cell{position:absolute;border:1.5px solid #fff;pointer-events:none;mix-blend-mode:difference;display:none}
+.slider{display:flex;align-items:center;gap:12px;max-width:420px;margin:12px 0 0;font-size:13.5px;color:var(--graphite)}
+.slider input{flex:1;accent-color:var(--brass)}
+.readout{min-height:22px;font-size:13.5px;color:var(--ink2);margin:8px 0 0}
+.strip{position:relative;height:74px;margin:18px 0 6px;border-bottom:1px solid var(--ink2)}
+.strip .tick{position:absolute;bottom:0;width:2px;height:26px;margin-left:-1px;background:var(--verdigris);opacity:.75;border-radius:2px 2px 0 0}
+.strip .thr{position:absolute;bottom:0;top:6px;width:0;border-left:2px dashed var(--caution)}
+.strip .thr span{position:absolute;bottom:-21px;left:6px;font-size:12px;color:var(--caution);white-space:nowrap}
+.strip+.strip-axis{margin-top:24px}
+.strip .q{position:absolute;bottom:0;width:4px;height:52px;margin-left:-2px;background:var(--breach);border-radius:3px 3px 0 0}
+.strip .q.calm{background:var(--verdigris)}
+.strip .q span{position:absolute;bottom:56px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:560;white-space:nowrap;background:var(--sheet);color:var(--ink);padding:0 4px;border-radius:4px}
+.strip-axis{display:flex;justify-content:space-between;font-size:12px;color:var(--graphite)}
+.metric{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--rule2);font-size:14.5px}
+.metric span{color:var(--graphite)}
+.metric strong{font-weight:560;text-align:right}
+
+/* RASID */
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border-top:1px solid var(--ink2);border-bottom:1px solid var(--rule);margin-bottom:24px}
+.kpi{padding:16px 16px 14px 0}
+.kpi+.kpi{padding-left:18px;border-left:1px solid var(--rule)}
+.kpi small{display:block;color:var(--graphite);font-size:13.5px}
+.kpi strong{display:block;font-size:clamp(24px,3.6vw,38px);font-weight:560;letter-spacing:-.02em;font-variation-settings:"HEXP" 35}
+.kpi em{font-style:normal;font-size:13px;color:var(--graphite)}
+.chart{display:block;width:100%;height:auto;aspect-ratio:640/230;touch-action:pan-y;cursor:crosshair}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--graphite);margin:0 0 6px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.hour{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0 0;padding:12px 0 0;border-top:1px solid var(--rule2)}
+.hour div{min-width:0}
+.sheet>.hour{border-top:0;margin-top:0;padding-top:0}
+.hour small{display:block;color:var(--graphite);font-size:12.5px}
+.hour strong{font-weight:560;font-size:15px}
+.checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:12px 0 4px}
+.check{border:1px solid var(--rule2);border-radius:9px;padding:8px 10px;background:#fff;min-width:0}
+.check b{font-weight:600;font-size:13px;color:var(--verdigris)}
+.check span{display:block;font-size:12.5px;color:var(--graphite);overflow-wrap:anywhere}
+.cases{position:relative;height:56px;margin:14px 0 4px;border-bottom:1px solid var(--rule)}
+.cases .dot{position:absolute;bottom:6px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--ink2);opacity:.8}
+.cases .mk{position:absolute;bottom:0;top:4px;border-left:2px solid var(--brass)}
+.cases .mk.tail{border-left-color:var(--breach)}
+.cases .mk span{position:absolute;top:-2px;left:5px;font-size:12px;white-space:nowrap}
+.cases .mk.flip span,.strip .thr.flip span{left:auto;right:6px}
+.strip .q.flip span{left:auto;right:0;transform:none}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:right;padding:7px 4px;border-bottom:1px solid var(--rule2);overflow-wrap:anywhere}
+th{font-weight:560;color:var(--graphite)}
+th:first-child,td:first-child{text-align:left}
+details>summary{cursor:pointer}
+.hourly summary{font-weight:550;padding:6px 0}
+
+/* Run evidence and footer */
+.evidence{margin:30px 0 0;padding:18px 0;border-top:1px solid var(--rule)}
+.evidence>summary{font-weight:560}
+.evidence .mini{font-size:12.5px;color:var(--graphite);margin:4px 0;overflow-wrap:anywhere}
+.dl{cursor:pointer;margin:10px 0 0;border:1px solid var(--ink);background:transparent;border-radius:999px;padding:8px 16px;font-weight:550;font-size:14px}
+.dl:hover{background:var(--ink);color:var(--sheet)}
+footer{border-top:1px solid var(--rule);margin-top:20px}
+footer .wrap{padding-top:18px;padding-bottom:28px;color:var(--graphite);font-size:13px;display:flex;flex-wrap:wrap;gap:6px 24px}
+.hidden{display:none!important}
+
+@media (max-width:820px){
+ .wrap{padding:0 16px}
+ .lede,.work,.work.even{grid-template-columns:minmax(0,1fr)}
+ .seal{grid-template-columns:auto minmax(0,1fr)}
+ .seal button{grid-column:1/-1;grid-row:auto;max-width:none}
+ .seal .hint{grid-column:1/-1}
+ .seal .beamwrap{grid-row:auto}
+ #tabs button{flex:1;padding:12px 6px 11px;letter-spacing:.06em}
+ .sheet{padding:18px 16px}
+ .kpi{padding-right:8px}.kpi+.kpi{padding-left:10px}
+ .hour{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .proof q{font-size:19px}
+ .where{display:none}
+ .switch{display:flex;width:100%}
+ .switch button{flex:1 1 auto;padding:9px 10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style></head><body>
+<header class="top"><div class="wrap">
+ <a class="mark" href="https://komail6222-png.github.io/mizan/"><svg class="beam" viewBox="0 0 48 40" aria-hidden="true"><path d="M24 9v25M15 36h18"/><g class="arm"><path d="M5 11h38"/><path d="M5 11l-4 10h8zM43 11l-4 10h8z"/></g><circle cx="24" cy="7" r="2"/></svg><span class="word">MIZAN</span><span class="ar" lang="ar">ميزان</span></a>
+ <p class="where">A live exhibit of seven signed decisions, re-checked in your browser</p>
+ <a class="about" href="https://komail6222-png.github.io/mizan/">What is MIZAN?</a>
+</div></header>
+<main class="wrap">
+<section id="trust" class="seal" aria-live="polite"><span class="state pending">Checking signatures…</span><p class="hint">Recomputing every digest and signature in this browser.</p></section>
+<nav aria-label="Products" id="tabs"></nav>
+<section id="view"></section>
+<details class="evidence"><summary>Run evidence</summary><p class="hint">Each result was verified by the local coordinator and committed with a signed receipt. This exhibit replays those recorded decisions; it does not run new ones.</p><div id="runs"></div><button class="dl" id="download">Download run JSON</button></details>
+</main>
+<footer><div class="wrap"><span>Generated fixtures only. Energy costs are illustrative units.</span><a href="https://github.com/komail6222-png/mizan">Source code and evidence</a></div></footer>
 <script type="application/json" id="data">%%DEMO_DATA%%</script>
 <script>
 'use strict';
 const evidenceJSON=document.querySelector('#data').textContent;const packet=JSON.parse(evidenceJSON), R=packet.results;
-const solo=document.documentElement.dataset.product;const domains=['SANAD','BASIRA','RASID'];let cur=0,policy=0,rule=0,sample=0,risk=0;
+const solo=document.documentElement.dataset.product;const domains=['SANAD','BASIRA','RASID'];let cur=0,policy=0,rule=0,sample=0,risk=0,hourAt=-1,reveal=55;
 const qs=s=>document.querySelector(s), el=(tag,cl,txt)=>{const n=document.createElement(tag);if(cl)n.className=cl;if(txt!==undefined)n.textContent=txt;return n;};
 function put(root,tag,cl,txt){const n=el(tag,cl,txt);root.append(n);return n}
-function btn(root,label,pressed,cb,cl=''){const b=put(root,'button',cl,label);b.type='button';b.setAttribute('aria-pressed',String(pressed));b.onclick=cb;return b}
-function card(root,title,wide=false){let n=put(root,'div','card'+(wide?' wide':''));put(n,'h2','',title);return n}
-function intro(box,key,title,sub){put(box,'div','key',key);put(box,'h1','',title);put(box,'p','muted',sub)}
-function switches(box,labels,idx,set){let g=put(box,'div','switch');labels.forEach((s,i)=>btn(g,s,i===idx,()=>{set(i);render()}))}
-function badge(n,s){return put(n,'span','badge '+(['REVIEW','ADVISORY_INSUFFICIENT_NORMALS'].includes(s)?'review':s==='DOES_NOT_MEET'||s==='FLAG'?'bad':''),s.replaceAll('_',' '))}
-function kpis(n,items){const row=put(n,'div','kpis');for(const [key,value] of items){const c=put(row,'div','kpi');put(c,'small','',key);put(c,'strong','',String(value))}}
-function metric(n,k,v){const row=put(n,'div','metricrow');put(row,'span','muted',k);put(row,'strong','',v)}
-function plot(host,series){const labels=put(host,'p','hint');series.forEach(s=>{const l=put(labels,'span','',s[0]+'   ');l.style.color=s[2];l.style.fontWeight='700'});
- const cv=put(host,'canvas','chart');cv.setAttribute('role','img');cv.setAttribute('aria-label',series.map(s=>s[0]).join(' and ')+' across forecast hours');
- const w=700,h=190;cv.width=w*2;cv.height=h*2;const c=cv.getContext('2d');c.scale(2,2);const vs=series.flatMap(x=>x[1]),hi=Math.max(1,...vs)*1.05,lo=Math.min(0,...vs),px=i=>42+i*(w-56)/(series[0][1].length-1||1),py=v=>h-24-(v-lo)*(h-41)/(hi-lo);
- c.font='11px system-ui';c.fillStyle='#4e6771';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4,y=py(v);c.fillText(v.toFixed(0),3,y+4);c.strokeStyle='#d6e0da';c.beginPath();c.moveTo(38,y);c.lineTo(w-8,y);c.stroke()}
- series.forEach(([name,a,color])=>{c.lineWidth=2.4;c.strokeStyle=color;c.beginPath();a.forEach((v,i)=>i?c.lineTo(px(i),py(v)):c.moveTo(px(i),py(v)));c.stroke()});c.fillStyle='#4e6771';series[0][1].forEach((v,i)=>{if(i%4===0)c.fillText(String(i).padStart(2,'0')+':00',px(i)-12,h-5)})
-}
+function btn(root,label,pressed,cb,cl='',key=''){const b=put(root,'button',cl,label);b.type='button';b.setAttribute('aria-pressed',String(pressed));if(key)b.setAttribute('data-key',key);b.onclick=cb;return b}
+function pane(root,cl='pane'){return put(root,'div',cl)}
+function sheet(root,title,cl=''){const n=put(root,'div','sheet '+cl);if(title)put(n,'h2','',title);return n}
+function lede(box,kind,title,sub){const l=put(box,'div','lede'),a=put(l,'div');put(a,'p','kind',kind);put(a,'h1','',title);put(l,'p','sub',sub)}
+function switches(box,labels,idx,set){let g=put(box,'div','switch');g.setAttribute('role','group');labels.forEach((s,i)=>btn(g,s,i===idx,()=>{set(i);render()},'','switch:'+i))}
+const verdictText={MEETS:'Meets',DOES_NOT_MEET:'Does not meet',REVIEW:'Needs review',FLAG:'Flagged for inspection',PASS:'Within normal range',ADVISORY_INSUFFICIENT_NORMALS:'Advisory only'};
+function chip(n,s){return put(n,'span','chip '+(['REVIEW','ADVISORY_INSUFFICIENT_NORMALS'].includes(s)?'review':s==='DOES_NOT_MEET'||s==='FLAG'?'bad':''),verdictText[s]||s.replaceAll('_',' ').toLowerCase())}
+const tone=s=>['REVIEW','ADVISORY_INSUFFICIENT_NORMALS'].includes(s)?'review':s==='DOES_NOT_MEET'||s==='FLAG'?'bad':'ok';
+function verdict(n,s){const v=put(n,'div','verdict');put(v,'span','big '+tone(s),verdictText[s]||s);return v}
+function metric(n,k,v){const row=put(n,'div','metric');put(row,'span','',k);put(row,'strong','',v);return row}
+const BEAM='<svg class="beam" viewBox="0 0 48 40" aria-hidden="true"><path d="M24 9v25M15 36h18"/><g class="arm"><path d="M5 11h38"/><path d="M5 11l-4 10h8zM43 11l-4 10h8z"/></g><circle cx="24" cy="7" r="2"/></svg>';
+const fmt=(v,d=2)=>Number(v).toFixed(d), sci=v=>v===0?'0':Math.abs(v)<1e-3?Number(v).toExponential(1):fmt(v,4);
+
+/* SANAD: bilingual procurement review */
 const names={apparent_power:'Rated apparent power',runtime_100:'Runtime at full load',efficiency_100:'Efficiency at full load',transfer_time:'Transfer time',active_power:'Rated active power'};
+const reasons={SOURCE_CONFLICT:'Two approved sources give different values, so the system will not choose one. A person decides.',SUPPORTED_INTERVAL:'Every approved source supports this verdict.'};
 function sanad(root){const original=R.evidence,d=policy?original.policy_comparison:original;
- intro(root,'Bilingual procurement','Review an Atlas-20 bid','Two approved documents disagree about apparent power. Select a policy and inspect the exact wording behind each verdict.');
+ lede(root,'Bilingual procurement review','Review an Atlas-20 bid','Two approved documents, one Arabic and one English, disagree about apparent power. Choose how sources are trusted and read the exact wording behind each verdict.');
  switches(root,['Check all sources','Prefer approved schedule'],policy,x=>policy=x);
- const grid=put(root,'div','grid'),list=card(grid,'Tender requirements');
- d.requirements.forEach((r,i)=>{const b=btn(list,'',i===rule,()=>{rule=i;render()},'rule');put(b,'span','',names[r.rule.attribute]+' '+(r.rule.op==='ge'?'≥ ':'≤ ')+r.rule.threshold+' '+r.rule.unit);badge(b,r.verdict)});
- const proof=card(grid,'Source evidence'),r=d.requirements[rule];badge(proof,r.verdict);put(proof,'p','hint',r.reason.replaceAll('_',' ').toLowerCase());
- r.evidence.forEach(c=>{const q=put(proof,'div','proof');put(q,'b','',c.document);const quote=put(q,'q','',c.quote);quote.dir='auto';put(q,'span','mini','Page '+c.page+' · characters '+c.start+'–'+c.end+' · '+c.source.slice(0,12))});
- put(grid,'p','hint wide','Both policies reuse the same extraction. Extraction '+d.extraction_digest.slice(0,12)+' · Evaluation '+d.evaluation_digest.slice(0,12));
+ const work=put(root,'div','work'),left=pane(work);put(left,'h2','','Tender requirements');
+ const list=put(left,'div','rules');
+ d.requirements.forEach((r,i)=>{const b=btn(list,'',i===rule,()=>{rule=i;render()},'rule','rule:'+i);put(b,'span','req',names[r.rule.attribute]+' '+(r.rule.op==='ge'?'≥ ':'≤ ')+r.rule.threshold+' '+r.rule.unit);chip(b,r.verdict)});
+ put(left,'p','hint',policy?'Prefer approved schedule: when sources disagree, the higher-authority document decides.':'Check all sources: every approved document must agree before the system decides.');
+ const right=sheet(pane(work),''),r=d.requirements[rule];verdict(right,r.verdict);
+ put(right,'p','hint',reasons[r.reason]||r.reason.replaceAll('_',' ').toLowerCase());
+ r.evidence.forEach((c,i)=>{if(i)put(right,'div','versus',r.verdict==='REVIEW'?'disagrees with':'and');
+  const q=put(right,'div','proof'),doc=put(q,'div','doc');put(doc,'b','',c.document);put(doc,'span','','Page '+c.page);
+  const quote=put(q,'q','',c.quote);quote.dir='auto';put(q,'div','where-in mono','characters '+c.start+'–'+c.end+', source '+c.source.slice(0,12))});
+ put(work,'p','foot-note','Both policies reuse the same extraction ('+d.extraction_digest.slice(0,12)+'); only the evaluation changes ('+d.evaluation_digest.slice(0,12)+').');
 }
+
+/* BASIRA: calibrated visual inspection */
 function basira(root){const keys=['crack','intact','scarce'],d=R[keys[sample]];
- intro(root,'Few-shot inspection','Inspect a machined ring','Compare the query image with a bank of normal parts. The overlay shows the locations contributing to its anomaly score.');
+ lede(root,'Calibrated visual inspection','Inspect a machined ring','The part is compared with known-good parts. A conformal p-value says how unusual it is, and the calibration bank sets how far that promise goes.');
  switches(root,['Cracked ring','Intact ring','Only 4 calibration parts'],sample,x=>sample=x);
- const grid=put(root,'div','grid'),images=card(grid,'Inspection image');const row=put(images,'div','images');
- [[d.image_png,'Query image'],[d.overlay_png,'Anomaly overlay']].forEach(([src,name])=>{const f=put(row,'figure');const im=put(f,'img');im.alt=name;im.src='data:image/png;base64,'+src;put(f,'figcaption','hint',name)});
- const stats=card(grid,'Calibration decision');badge(stats,d.decision);metric(stats,'Reference parts',d.reference_count);metric(stats,'Calibration parts',d.calibration_count);metric(stats,'Conformal p-value',d.p_numerator+' / '+d.p_denominator+' = '+d.p_value.toFixed(2));metric(stats,'Score / threshold',d.score.toFixed(3)+' / '+(d.threshold===null?'∞':d.threshold.toFixed(3)));
- put(stats,'p','hint',d.threshold===null?'Four calibration parts give a minimum p-value of 0.20. A 5% alert cannot fire.':d.decision==='FLAG'?'The score crosses the frozen normal-alert threshold. Route this part to inspection.':'This part did not cross the normal-alert threshold. A reviewer decides whether it can pass.');
- if(sample===1 && d.decision==='FLAG')put(stats,'p','hint','This generated ring is intact. Its alert is a false positive.');
- put(grid,'p','hint wide','Generated ring images · Auto-PASS disabled · Bank '+d.bank_digest.slice(0,12));
+ const work=put(root,'div','work even'),left=pane(work);
+ const cmp=put(left,'div','compare'),base=put(cmp,'img');base.alt='Part photo';base.src='data:image/png;base64,'+d.image_png;
+ const ov=put(cmp,'div','ov'),over=put(ov,'img');over.alt='Anomaly map';over.src='data:image/png;base64,'+d.overlay_png;
+ const edge=put(cmp,'div','edge'),cell=put(cmp,'div','cell');
+ const setReveal=v=>{reveal=v;ov.style.clipPath='inset(0 '+(100-v)+'% 0 0)';edge.style.left=v+'%'};setReveal(reveal);
+ const sl=put(left,'label','slider');put(sl,'span','','Photo');const range=put(sl,'input');range.type='range';range.min='0';range.max='100';range.value=String(reveal);
+ range.setAttribute('aria-label','Reveal the anomaly map over the photo');range.oninput=()=>setReveal(+range.value);put(sl,'span','','Anomaly map');
+ const read=put(left,'p','readout','Point at the image to read each patch’s contribution.'),map=d.score_map||[],peak=Math.max(...map.flat(),0);
+ cmp.onpointermove=e=>{if(!map.length||!cmp.getBoundingClientRect)return;const b=cmp.getBoundingClientRect(),n=map.length,c=Math.min(n-1,Math.max(0,Math.floor((e.clientX-b.left)/b.width*n))),rw=Math.min(n-1,Math.max(0,Math.floor((e.clientY-b.top)/b.height*n)));
+  Object.assign(cell.style,{display:'block',left:(c/n*100)+'%',top:(rw/n*100)+'%',width:(100/n)+'%',height:(100/n)+'%'});
+  read.textContent='Patch row '+(rw+1)+', column '+(c+1)+': contribution '+fmt(map[rw][c],4)+' (highest on this part '+fmt(peak,4)+')'};
+ cmp.onpointerleave=()=>{cell.style.display='none'};
+ const right=sheet(pane(work),'Calibration decision');verdict(right,d.decision);
+ const scores=d.calibration_scores||[],all=scores.concat([d.score],d.threshold===null?[]:[d.threshold]),lo=Math.log(Math.min(...all)*0.8),hi=Math.log(Math.max(...all)*1.25),pct=s=>(Math.log(s)-lo)/(hi-lo)*100,x=s=>pct(s).toFixed(2)+'%';
+ const strip=put(right,'div','strip');strip.setAttribute('role','img');strip.setAttribute('aria-label',scores.length+' known-good parts and this part on a log score axis');
+ scores.forEach(s=>{const t=put(strip,'div','tick');t.style.left=x(s)});
+ if(d.threshold!==null){const t=put(strip,'div','thr'+(pct(d.threshold)>62?' flip':''));t.style.left=x(d.threshold);put(t,'span','','alert threshold')}
+ const q=put(strip,'div','q'+(d.decision==='FLAG'?'':' calm')+(pct(d.score)>80?' flip':''));q.style.left=x(d.score);put(q,'span','','this part '+fmt(d.score,2));
+ const ax=put(right,'div','strip-axis');put(ax,'span','','more typical');put(ax,'span','','more unusual');
+ put(right,'p','hint','Each green tick is a known-good calibration part. The part is flagged when it is more unusual than the bank allows at α = 5%.');
+ metric(right,'Reference parts',d.reference_count);metric(right,'Calibration parts',d.calibration_count);
+ metric(right,'Conformal p-value',d.p_numerator+' / '+d.p_denominator+' = '+d.p_value.toFixed(2));
+ metric(right,'Score / threshold',d.score.toFixed(3)+' / '+(d.threshold===null?'∞':d.threshold.toFixed(3)));
+ put(right,'p','hint',d.threshold===null?'Four calibration parts give a minimum p-value of 0.20. A 5% alert cannot fire, so the result is advisory.':d.decision==='FLAG'?'The score crosses the frozen normal-alert threshold. Route this part to inspection.':'This part did not cross the normal-alert threshold. A reviewer decides whether it can pass.');
+ if(sample===1 && d.decision==='FLAG')put(right,'p','hint','This generated ring is intact. Its alert is a false positive, and the evaluation report explains why this bank produces them.');
+ put(work,'p','foot-note','Generated ring images, shown at their real 96 px resolution. Automatic PASS is disabled. Bank '+d.bank_digest.slice(0,12)+'.');
 }
-function rasid(root){const d=risk?R.neutral:R.energy,c=d.certificate,p=d.plan,f=d.forecast;
- intro(root,'Probabilistic energy planning','Schedule a site battery','A day-ahead plan uses paired load and solar scenarios. The verifier reconstructs battery physics, settlement and risk from the published plan.');
- switches(root,['Risk weight 0.35','Risk-neutral'],risk,x=>risk=x);
- const g=put(root,'div','grid'),sum=card(g,'Plan certificate',true);kpis(sum,[['Expected cost',c.expected_cost.toFixed(2)],['Tail cost · CVaR 90%',c.cvar.toFixed(2)],['Risk-adjusted cost',c.objective.toFixed(2)]]);put(sum,'p','hint',c.physical_status.replaceAll('_',' ')+' · '+f.residual_days+' prior daily error paths · '+d.problem.weights.length+' reduced scenarios');
- const forecast=card(g,'Load and solar forecast');plot(forecast,[['Load (kW)',f.point.map(x=>x[0]),'#005f58'],['Solar (kW)',f.point.map(x=>x[1]),'#aa6216']]);
- const schedule=card(g,'Battery state of charge');plot(schedule,[['State of charge (kWh)',p.soc.slice(0,-1),'#3463a0']]);metric(schedule,'Final state',p.soc.at(-1).toFixed(1)+' kWh');
- const wrap=card(g,'Hourly schedule',true),dt=put(wrap,'details');put(dt,'summary','','Show 24 hourly decisions');const tab=put(dt,'table'),tr=put(tab,'tr');['UTC','Charge kW','Discharge kW','SoC kWh'].forEach(v=>put(tr,'th','',v));
- p.charge.forEach((v,i)=>{const t=put(tab,'tr');[f.timestamps[i].slice(11,16),Math.abs(v).toFixed(2),Math.abs(p.discharge[i]).toFixed(2),p.soc[i].toFixed(2)].forEach(x=>put(t,'td','',x))})
+
+/* RASID: risk-aware battery planning */
+function chart(host,label,draw){const cv=put(host,'canvas','chart');cv.setAttribute('role','img');cv.setAttribute('aria-label',label);
+ const w=640,h=230;cv.width=w*2;cv.height=h*2;const c=cv.getContext('2d');
+ const paint=at=>{if(!c)return;if(typeof c.setTransform==='function')c.setTransform(2,0,0,2,0,0);else c.scale(2,2);if(typeof c.clearRect==='function')c.clearRect(0,0,w,h);draw(c,w,h,at)};
+ paint(hourAt);cv.repaint=paint;return cv}
+function frame(c,w,h,lo,hi,unit){const L=40,Rr=w-12,T=26,B=h-26,py=v=>B-(v-lo)*(B-T)/(hi-lo||1),px=i=>L+i*(Rr-L)/23;
+ c.font='11px Readex, system-ui';c.lineWidth=1;c.strokeStyle='#dbe1e7';c.fillStyle='#56637c';
+ for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,y=py(v);c.beginPath();c.moveTo(L,y);c.lineTo(Rr,y);c.stroke();c.fillText(v.toFixed(0),4,y+4)}
+ for(let i=0;i<24;i+=4)c.fillText(String(i).padStart(2,'0')+':00',px(i)-13,h-7);c.fillText(unit,4,11);return{px,py,L,Rr,T,B}}
+function cursor(c,g,at){if(at<0)return;c.strokeStyle='#8a5f1c';c.lineWidth=1.5;c.beginPath();c.moveTo(g.px(at),g.T);c.lineTo(g.px(at),g.B);c.stroke()}
+function line(c,g,vals,color,width=2.4){c.strokeStyle=color;c.lineWidth=width;c.beginPath();vals.forEach((v,i)=>i?c.lineTo(g.px(i),g.py(v)):c.moveTo(g.px(i),g.py(v)));c.stroke()}
+function band(c,g,lo,hi,color){if(typeof c.fill!=='function')return;c.fillStyle=color;c.beginPath();lo.forEach((v,i)=>i?c.lineTo(g.px(i),g.py(v)):c.moveTo(g.px(i),g.py(v)));for(let i=hi.length-1;i>=0;i--)c.lineTo(g.px(i),g.py(hi[i]));if(typeof c.closePath==='function')c.closePath();c.fill()}
+function rasid(root){const d=risk?R.neutral:R.energy,c=d.certificate,p=d.plan,f=d.forecast,A=d.problem.assets;
+ lede(root,'Risk-aware energy planning','Schedule a site battery','A day-ahead plan built from paired load and solar scenarios. An independent verifier rebuilds the battery physics and the settlement from the published plan, without the solver’s code.');
+ switches(root,['Risk weight 0.35','Risk-neutral'],risk,x=>{risk=x});
+ const k=put(root,'div','kpis');[['Expected cost',fmt(c.expected_cost),'average over scenarios'],['Tail cost, CVaR 90%',fmt(c.cvar),'mean of the worst 10%'],['Risk-adjusted cost',fmt(c.objective),'what the planner minimised']].forEach(([a,b,e])=>{const n=put(k,'div','kpi');put(n,'small','',a);put(n,'strong','',b);put(n,'em','',e)});
+ const work=put(root,'div','work even'),fc=sheet(pane(work),'Load and solar forecast'),sc=sheet(pane(work),'Battery plan');
+ const lg1=put(fc,'p','legend');[['#0e1c36','Load, with 90% range'],['#c08a2e','Solar, with 90% range']].forEach(([col,t])=>{const s=put(lg1,'span','',t);const i=el('i');i.style.background=col;s.prepend?s.prepend(i):s.append(i)});
+ const load=f.point.map(x=>x[0]),pv=f.point.map(x=>x[1]),qlo=i=>f.quantiles.map(q=>q[i][0]),qhi=i=>f.quantiles.map(q=>q[i][4]);
+ const top=Math.max(...qhi(0),...qhi(1))*1.08;
+ const cv1=chart(fc,'Load and solar forecast for 24 hours with 90% ranges',(ctx,w,h,at)=>{const g=frame(ctx,w,h,0,top,'kW');band(ctx,g,qlo(0),qhi(0),'rgba(14,28,54,.12)');band(ctx,g,qlo(1),qhi(1),'rgba(192,138,46,.18)');line(ctx,g,load,'#0e1c36');line(ctx,g,pv,'#c08a2e');cursor(ctx,g,at)});
+ const lg2=put(sc,'p','legend');[['#256b5b','Stored energy (kWh)'],['#256b5b','Charging'],['#b0351f','Discharging']].forEach(([col,t],j)=>{const s=put(lg2,'span','',t);const i=el('i');i.style.background=col;if(j===1)i.style.height='8px';if(j===2){i.style.height='8px'}s.prepend?s.prepend(i):s.append(i)});
+ const soc=p.soc.slice(0,24),cap=A.capacity,pw=A.power;
+ const cv2=chart(sc,'Battery state of charge and hourly charging and discharging',(ctx,w,h,at)=>{const g=frame(ctx,w,h,0,cap,'kWh');const mid=g.B,scale=(g.B-g.T)*0.32/pw;
+  ctx.lineWidth=Math.max(3,(g.Rr-g.L)/24*0.5);p.charge.forEach((v,i)=>{if(Math.abs(v)<1e-9)return;ctx.strokeStyle='rgba(37,107,91,.55)';ctx.beginPath();ctx.moveTo(g.px(i),mid);ctx.lineTo(g.px(i),mid-Math.abs(v)*scale);ctx.stroke()});
+  p.discharge.forEach((v,i)=>{if(Math.abs(v)<1e-9)return;ctx.strokeStyle='rgba(176,53,31,.55)';ctx.beginPath();ctx.moveTo(g.px(i),mid);ctx.lineTo(g.px(i),mid-Math.abs(v)*scale);ctx.stroke()});
+  line(ctx,g,soc,'#256b5b',2.6);cursor(ctx,g,at)});
+ const hour=put(root,'div','sheet span'),hh=put(hour,'div','hour');
+ const show=i=>{hh.replaceChildren();const t=f.timestamps[i].slice(11,16),ch=Math.abs(p.charge[i]),dc=Math.abs(p.discharge[i]);
+  [['Hour (UTC)',t],['Load forecast',fmt(load[i],1)+' kW, range '+fmt(qlo(0)[i],0)+'–'+fmt(qhi(0)[i],0)],['Battery',ch>1e-9?'charging '+fmt(ch,1)+' kW':dc>1e-9?'discharging '+fmt(dc,1)+' kW':'idle'],['Stored energy',fmt(p.soc[i],1)+' kWh of '+cap]].forEach(([a,b])=>{const n=put(hh,'div');put(n,'small','',a);put(n,'strong','',b)})};
+ show(hourAt<0?17:hourAt);
+ [cv1,cv2].forEach(cv=>{cv.onpointermove=e=>{if(!cv.getBoundingClientRect)return;const b=cv.getBoundingClientRect(),xx=(e.clientX-b.left)/b.width*640,i=Math.max(0,Math.min(23,Math.round((xx-40)/((640-12-40)/23))));if(i===hourAt)return;hourAt=i;cv1.repaint(i);cv2.repaint(i);show(i)};cv.onpointerleave=()=>{hourAt=-1;cv1.repaint(-1);cv2.repaint(-1)}});
+ const vf=sheet(put(root,'div','span'),'Independent verifier'),groups={};
+ Object.entries(c.residuals).forEach(([key,val])=>{const m=key.match(/^C(\d+)_(.+)$/);if(!m)return;const g=groups[m[1]]||(groups[m[1]]={max:0,parts:[]});g.max=Math.max(g.max,Math.abs(val));g.parts.push(m[2].replaceAll('_',' '))});
+ const ids=Object.keys(groups).sort((a,b)=>a-b),worst=Math.max(...ids.map(i=>groups[i].max));
+ put(vf,'p','hint',c.physical_status.replaceAll('_',' ').toLowerCase()+': all '+ids.length+' constraint groups hold, largest residual '+sci(worst)+'. '+f.residual_days+' prior daily error paths, '+d.problem.weights.length+' reduced scenarios.');
+ const grid=put(vf,'div','checks');ids.forEach(i=>{const n=put(grid,'div','check');put(n,'b','','C'+i+' ✓');put(n,'span','',groups[i].parts.join(', '));put(n,'span','mono','max '+sci(groups[i].max))});
+ const costs=c.case_costs||[],clo=Math.min(...costs,c.expected_cost)*0.995,chi=Math.max(...costs,c.cvar)*1.005,cx=v=>((v-clo)/(chi-clo)*100).toFixed(2)+'%';
+ put(vf,'h3','','Scenario costs');const cs=put(vf,'div','cases');costs.forEach(v=>{const n=put(cs,'div','dot');n.style.left=cx(v)});
+ [['mk','expected '+fmt(c.expected_cost,1),c.expected_cost],['mk tail','tail '+fmt(c.cvar,1),c.cvar]].forEach(([cl,t,v])=>{const m=put(cs,'div',cl+(parseFloat(cx(v))>60?' flip':''));m.style.left=cx(v);put(m,'span','',t)});
+ const wrap=put(root,'div','span'),dt=put(wrap,'details','hourly');put(dt,'summary','','Show 24 hourly decisions');const tab=put(dt,'table'),tr=put(tab,'tr');['UTC','Charge kW','Discharge kW','SoC kWh'].forEach(v=>put(tr,'th','',v));
+ p.charge.forEach((v,i)=>{const t=put(tab,'tr');[f.timestamps[i].slice(11,16),Math.abs(v).toFixed(2),Math.abs(p.discharge[i]).toFixed(2),p.soc[i].toFixed(2)].forEach(x=>put(t,'td','',x))});
 }
-function render(){qs('#tabs').replaceChildren();domains.forEach((s,i)=>{if(!solo||solo===s)btn(qs('#tabs'),s,i===cur,()=>{cur=i;render()})});let v=qs('#view');v.replaceChildren();[sanad,basira,rasid][cur](v)}
-packet.run.receipts.forEach(r=>put(qs('#runs'),'p','mini mono',r.fixture+' · rev '+r.deployment+' · sha256 '+r.result_digest));
+function render(){const was=document.activeElement,key=was&&was.getAttribute?was.getAttribute('data-key'):null; // the control that had focus
+ qs('#tabs').replaceChildren();domains.forEach((s,i)=>{if(!solo||solo===s)btn(qs('#tabs'),s,i===cur,()=>{cur=i;render()},'','tab:'+i)});let v=qs('#view');v.replaceChildren();[sanad,basira,rasid][cur](v);
+ if(key){const b=document.querySelector('[data-key="'+key+'"]');if(b&&b.focus)b.focus()}} // keeps keyboard focus on the same control after a redraw
+packet.run.receipts.forEach(r=>put(qs('#runs'),'p','mini mono',r.fixture+', revision '+r.deployment+', sha256 '+r.result_digest));
 qs('#download').onclick=()=>{const url=URL.createObjectURL(new Blob([evidenceJSON],{type:'application/json'}));const a=el('a');a.href=url;a.download='mizan-demo-results.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
+/*VERIFY:BEGIN*/
 /* In-browser verification. The page recomputes Python-canonical JSON (sorted keys, compact separators, original
    number spellings), the SHA-256 result digest, the signed execution context and the Ed25519 signature of every
    receipt, using only the data embedded above. Nothing is fetched. */
@@ -99,17 +357,26 @@ async function verifyPacket(root){const run=field(root,'run'),results=field(root
 function tampered(root){const copy=JSON.parse(JSON.stringify(root)),first=field(field(copy,'run'),'receipts').v[0],res=field(field(copy,'results'),field(first,'fixture').v);
  const walk=n=>{if(n.t==='n'){const d=n.raw.match(/\d(?=\D*$)/);n.raw=n.raw.replace(/\d(?=\D*$)/,String((+d[0]+1)%10));return true}return(n.k||[]).some(e=>walk(e[1]))||(n.v&&Array.isArray(n.v)&&n.v.some(walk))};
  walk(res);return copy}
+/*VERIFY:END*/
+
 function showTrust(box,report){box.replaceChildren();const good=report.rows.filter(r=>r.ok).length,all=report.rows.length;
- put(box,'span','badge '+(good===all?'ok':'bad'),good===all?'✓ Verified in this browser':'✗ Verification failed');
- put(box,'span','hint',good+' of '+all+' results: SHA-256 digest and Ed25519 signature recomputed from the embedded data. Signing key '+report.fingerprint.slice(0,8)+'…'+report.fingerprint.slice(-5)+'. Compare it with the fingerprint published in the README to establish who signed.');
- const t=put(box,'button','','Try a tampered copy');t.type='button';t.onclick=async()=>{const r=(await verifyPacket(tampered(rawPacket))).rows[0];
-  t.textContent=r.ok?'Unexpected: tampering was not detected':'Tampered copy rejected: '+r.why;};
+ const icon=put(box,'span');icon.innerHTML=BEAM;icon.className='beamwrap';
+ box.className='seal'+(good===all?'':' failed');
+ put(box,'span','state '+(good===all?'ok':'bad'),good===all?'✓ Verified in this browser':'✗ Verification failed');
+ const said=good+' of '+all+' results re-checked here: SHA-256 digests and Ed25519 signatures recomputed from the embedded data. Signing key '+report.fingerprint.slice(0,8)+'…'+report.fingerprint.slice(-5)+'; compare it with the fingerprint in the README to know who signed.';
+ const hint=put(box,'p','hint',said);
+ const t=put(box,'button','','Try a tampered copy');t.type='button';t.onclick=async()=>{
+  if(String(box.className).includes('tipped')){box.className='seal';t.textContent='Try a tampered copy';hint.textContent=said;return}
+  const r=(await verifyPacket(tampered(rawPacket))).rows[0];
+  if(r.ok){t.textContent='Unexpected: tampering was not detected';return}
+  box.className='seal tipped';t.textContent='Tampered copy rejected';
+  hint.textContent='One digit was changed in the first result, so the '+r.why+'. Select the button again to restore the original.';};
  const d=put(box,'details');put(d,'summary','','Per-result checks');const tab=put(d,'table'),h=put(tab,'tr');['Result','Status','SHA-256'].forEach(x=>put(h,'th','',x));
  report.rows.forEach(r=>{const row=put(tab,'tr');[r.label,r.ok?'✓ verified':'✗ '+r.why,r.digest.slice(0,16)].forEach(x=>put(row,'td','mono',x))})}
 const rawPacket=parseRaw(evidenceJSON);
 var mizanVerification=(async()=>{const box=qs('#trust');
- if(typeof crypto==='undefined'||!crypto.subtle||typeof TextEncoder==='undefined'){if(box){box.replaceChildren();put(box,'span','badge review','Not verified here');put(box,'span','hint','This browser cannot run Ed25519 here. Verify offline: python -m mizan verify demo_results.json')}return null}
+ if(typeof crypto==='undefined'||!crypto.subtle||typeof TextEncoder==='undefined'){if(box){box.replaceChildren();put(box,'span','state pending','Not verified here');put(box,'p','hint','This browser cannot run Ed25519 here. Verify offline: python -m mizan verify demo_results.json')}return null}
  try{const report=await verifyPacket(rawPacket);if(box)showTrust(box,report);return report}
- catch(e){if(box){box.replaceChildren();put(box,'span','badge review','Not verified here');put(box,'span','hint',String(e.message||e)+'. Verify offline: python -m mizan verify demo_results.json')}return{error:String(e)}}})();
+ catch(e){if(box){box.replaceChildren();put(box,'span','state pending','Not verified here');put(box,'p','hint',String(e.message||e)+'. Verify offline: python -m mizan verify demo_results.json')}return{error:String(e)}}})();
 const preferred=solo||new URLSearchParams(location.search).get('product');if(domains.includes((preferred||'').toUpperCase()))cur=domains.indexOf(preferred.toUpperCase());render();
 </script></body></html>

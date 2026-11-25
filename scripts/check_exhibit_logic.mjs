@@ -68,6 +68,11 @@ assert.equal(forged.ok, false);
 assert.match(forged.why, /differs from the signed receipt/);
 assert.equal(items("q").length, 2);
 click("Prefer approved schedule");
+// Each redrawn control carries a stable key, which the page uses to give focus back to the same control.
+const chosen = items("button").find(x => x.textContent === "Prefer approved schedule");
+assert.equal(chosen.attrs["data-key"], "switch:1");
+assert.equal(chosen.attrs["aria-pressed"], "true");
+assert.ok([...nodes.tabs.all()].filter(x => x.tag === "button").every((x, i) => x.attrs["data-key"] === "tab:" + i));
 assert.equal(items("q").length, 1);
 assert.match(items("q")[0].textContent, /20 kVA/);
 click("BASIRA");
