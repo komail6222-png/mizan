@@ -196,9 +196,10 @@ def rasid_hf(forecaster:Forecaster,*,days=60)->dict:
     """energy_evaluation() operation for operation, with two more policies planned on the forecaster's quantiles.
 
     Per origin: the shipped ridge forecast, errors and five policies; then the forecaster sees only chronos_context()
-    (the vintage at the origin) and its quantiles at CHRONOS_LEVELS are sorted across levels and solar is clipped at
-    zero before scoring and planning (SCENARIO_RULE). Each of the seven policies carries its own battery state and
-    month-to-date peak. Ridge and the forecaster are both scored on SHARED_LEVELS."""
+    (the vintage at the origin) and its quantiles at CHRONOS_LEVELS are sorted across levels before scoring and
+    planning; solar is clipped at zero before planning (SCENARIO_RULE) and is never scored. Each of the seven policies
+    carries its own battery state and month-to-date peak. Ridge and the forecaster are both scored on SHARED_LEVELS,
+    on the load series only."""
     origin0=datetime(2026,1,1,tzinfo=timezone.utc);all_rows=records(examples.electricity(42+days))
     actual={t:(l,p) for t,k,l,p in all_rows};rows=[];last_month=None
     peaks={k:0. for k in POLICIES_HF};states={k:(0. if k=="no_battery" else 40.) for k in POLICIES_HF}

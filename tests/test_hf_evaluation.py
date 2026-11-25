@@ -554,8 +554,9 @@ class EvaluateScriptTests(unittest.TestCase):
         self.assertEqual(set(rasid["model"]["decision_quality"]), {"chronos", "chronos_risk_neutral"})
         self.assertEqual(len(rasid["model"]["paired_comparisons"]), 3)
         self.assertEqual((rasid["settings"]["scenario_rule"], rasid["settings"]["forecast_note"]), (hf.SCENARIO_RULE, hf.FORECAST_NOTE))
-        for text in ("sorted across levels", "monotone rearrangement", "clipped at zero"):
+        for text in ("sorted across levels", "monotone rearrangement", "clipped at zero", "solar is not scored"):
             self.assertIn(text, rasid["settings"]["quantile_repair"])
+        self.assertNotIn("before scoring", rasid["settings"]["quantile_repair"])   # only load is scored
         self.assertEqual(set(rasid["gate"]["total_cost_relative_difference"]), set(evaluation.POLICIES))
         # SANAD: the protocol size, the labelled query count and the ceiling note.
         self.assertEqual((sanad["settings"]["n_docs"], sanad["settings"]["seed"]), (120, 2024))
@@ -576,8 +577,11 @@ class EvaluateScriptTests(unittest.TestCase):
                     evaluate_hf.run("unused", out, only="rasid", loaders=loaders)
                 self.assertEqual(caught.exception.code, "EVIDENCE_OUT"); self.assertIn("--repeat", str(caught.exception))
             self.assertEqual(loaded, []); self.assertEqual(list(self.out.iterdir()), [])   # refused before any model loads
+            # A derived file beside the evidence (scripts/derive_hf_intervals.py) is neither touched nor a reason to refuse.
+            derived = self.out / "rasid_intervals.json"; derived.write_bytes(b'{"derived":true}')
             evaluate_hf.run("unused", self.out, only="rasid", repeat=True, loaders=loaders)
-        self.assertEqual(sorted(p.name for p in self.out.iterdir()), ["rasid.json"]); self.assertIn("repeat_run", self.read("rasid"))
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()), ["rasid.json", "rasid_intervals.json"]); self.assertIn("repeat_run", self.read("rasid"))
+        self.assertEqual(derived.read_bytes(), b'{"derived":true}')
 
     def test_main_exits_0_after_writing_and_prints_the_summary(self):
         out = self.out / "out"

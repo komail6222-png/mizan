@@ -12,6 +12,10 @@ ridge policies against reports/evaluation/rasid.json, from the same run that pla
 retriever across two separate runs. A failed gate exits with code 2. Files are written only after every requested
 gate has passed, each through a temporary file and a rename. quick=True (tests only) uses reduced sizes and never
 writes. Nothing here imports torch: the model loaders in mizan/models.py do, after verifying the checkpoint.
+
+reports/hf also holds rasid_intervals.json, which scripts/derive_hf_intervals.py derives from rasid.json without a
+model; this script never writes or reads it. After a new evidence run, run that script again (a test requires the
+derived file to match its inputs).
 """
 import argparse
 import importlib.metadata
@@ -201,7 +205,7 @@ def _rasid(root, load, size, say):
                                     "it; the loader passes at most its last 2048 values for each series"),
                 "quantile_repair": ("Chronos quantiles are sorted across levels at each hour (monotone rearrangement), in the "
                                     "loader and again in the harness, and solar values below zero are clipped at zero before "
-                                    "scoring and planning (counted in pv_values_clipped); load is not clipped"),
+                                    "planning (counted in pv_values_clipped; solar is not scored); load is not clipped"),
                 "scenario_rule": result["scenario_rule"], "forecast_note": result["forecast"]["note"],
                 "comparisons": [list(c) for c in hf.RASID_COMPARISONS],
                 "gate_tolerances": {"mae_kw_absolute": hf.RASID_MAE_TOLERANCE,
