@@ -34,7 +34,7 @@ def app_factory(data=None,public=None):
                 finally:runner.close()
             finally:broker.close()
         else:yield
-    api=FastAPI(title="MIZAN",version="3.0.0",lifespan=lifespan)
+    api=FastAPI(title="MIZAN",version="3.1.0",lifespan=lifespan)
     @api.middleware("http")
     async def trace(request,call_next):
         tid=uuid.uuid4().hex;start=time.perf_counter()

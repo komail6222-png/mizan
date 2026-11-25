@@ -366,7 +366,7 @@ render();let t;addEventListener("resize",()=>{clearTimeout(t);t=setTimeout(()=>{
 </html>
 """
 
-MODELS_PAGE = r"""<div class="kicker">Prepared for release 3.1, not yet released · generated fixtures</div>
+MODELS_PAGE = r"""<div class="kicker">Release 3.1 · generated fixtures</div>
 <h1>Foundation models from Hugging Face</h1>
 <section id="hf-section" hidden>
 <p class="lede" id="hf-lede"></p>
