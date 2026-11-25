@@ -136,7 +136,7 @@ CI stays torch-free: the harnesses are tested with stub models in `tests/test_hf
 
 ## Evidence and limits
 
-- **Tests.** 171 tests. In the main environment (Python 3.12.16), 167 passed and the 4 model-loader tests were skipped without torch; those 4 passed in `.venv-hf` against the verified checkpoints. The suite also passed on Python 3.13.18 with the same 4 skips (`reports/application-tests.txt`). New in 3.1: `tests/test_hf_models.py`, `tests/test_hf_evaluation.py`, `tests/test_hf_intervals.py`, `tests/test_site.py`.
+- **Tests.** 172 tests. In the main environment (Python 3.12.16), 168 passed and the 4 model-loader tests were skipped without torch; those 4 passed in `.venv-hf` against the verified checkpoints. The suite also passed on Python 3.13.18 with the same 4 skips (`reports/application-tests.txt`). New in 3.1: `tests/test_hf_models.py`, `tests/test_hf_evaluation.py`, `tests/test_hf_intervals.py`, `tests/test_site.py`.
 - **The models never hold decision authority.** They supply rankings, features or forecasts. SANAD's grammar, BASIRA's calibrated threshold and RASID's independent verifier decide, as before, and nothing here changed a deployed engine. Switching an engine to a model would be a separate, signed `upgrade` decision by the operator.
 - **Generated data.** All inputs are generated fixtures: rings, load and solar histories, and datasheets. No result here extends to real parts, sites or tenders.
 - **CPU only.** Everything ran on one CPU; no GPU was used or qualified.
