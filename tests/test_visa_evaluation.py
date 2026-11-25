@@ -251,5 +251,120 @@ class RecordTests(unittest.TestCase):
                     self.assertEqual(pooled["n"], sum(c[measure]["n"] for c in by_class.values()))
 
 
+class RunnerTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from mizan.visa import build_manifest, read_split
+        from tests.visa_fixture import make_visa_tree
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.data = base / "visa"
+        root = self.data / "data" / "VisA"
+        manifest = build_manifest(root, read_split(make_visa_tree(root)), "a" * 64, "b" * 64)
+        self.manifest = base / "manifest.json"
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        self.tests = {x["path"] for x in manifest["images"] if x["split"] == "test"}
+        self.out = base / "out"
+        self.log = base / "runs.json"
+        self.loaded = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def loaders(self, models_root):
+        from mizan.visa_evaluation import Scorer
+        self.loaded.append(models_root)
+        return {"descriptor": Scorer("descriptor", _small_features, True, "test/descriptor"),
+                "dinov2-engine": Scorer("dinov2-engine", lambda im: _small_features(im) ** 2, True, "test/engine"),
+                "dinov2-native": Scorer("dinov2-native", lambda im: _small_features(im) + .01, False, "test/native")}
+
+    def run_visa(self, **kw):
+        import contextlib, io
+        from scripts.evaluate_visa import run
+        args = dict(models_root="unused", reason="test", loaders=self.loaders, quick=True, log=self.log,
+                    manifest_path=self.manifest)
+        args.update(kw)
+        with contextlib.redirect_stdout(io.StringIO()):
+            return run(self.data, self.out, **args)
+
+    def test_dry_run_never_opens_test_images(self):
+        from unittest import mock
+        import PIL.Image
+        opened, real_open = [], PIL.Image.open
+        def spy(fp, *a, **k):
+            if isinstance(fp, (str, bytes)) or hasattr(fp, "__fspath__"):
+                opened.append(str(fp))
+            return real_open(fp, *a, **k)
+        with mock.patch.object(PIL.Image, "open", spy):
+            self.run_visa(dry_run=True)
+        self.assertTrue(opened, "the dry run should open train images")
+        self.assertFalse([p for p in opened if any(p.endswith(t) for t in self.tests)])
+        self.assertFalse((self.out / "basira.json").exists())
+        log = json.loads(self.log.read_text(encoding="utf-8"))
+        self.assertEqual(len(log), 1)
+        self.assertTrue(log[0]["dry_run"])
+
+    def test_failed_gate_writes_nothing_and_exits_2(self):
+        from unittest import mock
+        from mizan import visa_evaluation as ve
+        bad = {"passed": False, "checked": ["row[0].p_value"], "mismatches": [{"name": "row[0].p_value"}], "bit_exact": False, "rule": "x"}
+        with mock.patch.object(ve, "fixture_gate", return_value=bad), \
+                mock.patch("scripts.evaluate_visa.check_seal", return_value=None):
+            with self.assertRaises(SystemExit) as cm:
+                self.run_visa(seal="0" * 40)
+        self.assertEqual(cm.exception.code, 2)
+        self.assertFalse(self.out.exists() and any(self.out.iterdir()))
+        self.assertFalse(self.log.exists())
+
+    def test_evidence_dir_needs_repeat(self):
+        from scripts.evaluate_visa import EVIDENCE_DIR
+        from mizan.core.contract import Refused
+        import contextlib, io
+        from scripts.evaluate_visa import run
+        with self.assertRaises(Refused) as cm, contextlib.redirect_stdout(io.StringIO()):
+            run(self.data, EVIDENCE_DIR, models_root="unused", reason="test", loaders=self.loaders, seal="0" * 40,
+                log=self.log, manifest_path=self.manifest)
+        self.assertEqual(cm.exception.code, "EVIDENCE_OUT")
+        self.assertEqual(self.loaded, [])
+
+    def test_real_run_requires_seal_and_matching_digest(self):
+        from unittest import mock
+        from mizan import visa
+        from mizan.core.contract import Refused
+        with self.assertRaises(Refused) as cm:
+            self.run_visa()
+        self.assertEqual(cm.exception.code, "VISA_SEAL")
+        with mock.patch.object(visa, "SEALED_DIGEST", "0" * 64), \
+                mock.patch("scripts.evaluate_visa.check_seal", return_value=None):
+            with self.assertRaises(Refused) as cm:
+                self.run_visa(seal="0" * 40)
+        self.assertEqual(cm.exception.code, "VISA_PROTOCOL")
+        self.assertEqual(self.loaded, [])
+
+    def test_run_log_appends(self):
+        self.run_visa(dry_run=True, reason="first")
+        self.run_visa(dry_run=True, reason="second")
+        log = json.loads(self.log.read_text(encoding="utf-8"))
+        self.assertEqual([e["reason"] for e in log], ["first", "second"])
+        for entry in log:
+            self.assertTrue({"commit", "date", "dry_run", "reason", "protocol_digest", "peak_rss_mib"} <= set(entry))
+
+    def test_real_run_writes_a_gated_repeated_record(self):
+        from unittest import mock
+        from mizan import visa_evaluation as ve
+        ok = {"passed": True, "checked": ["stub"], "mismatches": [], "bit_exact": True, "rule": "stub"}
+        with mock.patch.object(ve, "fixture_gate", return_value=ok), mock.patch.object(ve, "dinov2_gate", return_value=ok), \
+                mock.patch("scripts.evaluate_visa.check_seal", return_value=None):
+            self.run_visa(seal="1" * 40, repeat=True)
+        record = json.loads((self.out / "basira.json").read_text(encoding="utf-8"))
+        self.assertTrue(record["gate"]["passed"])
+        self.assertTrue(record["repeat_run"]["identical"])
+        self.assertEqual(record["seal_commit"], "1" * 40)
+        self.assertIn("environment", record)
+        log = json.loads(self.log.read_text(encoding="utf-8"))
+        self.assertFalse(log[-1]["dry_run"])
+
+
 if __name__ == "__main__":
     unittest.main()
