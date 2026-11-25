@@ -564,8 +564,10 @@ class EvaluateScriptTests(unittest.TestCase):
             self.assertEqual(sanad[half]["queries_unit"], "(document, attribute) pairs, each ranked with three query kinds")
         self.assertEqual(sanad["model"]["metrics"]["bilingual"]["all"]["recall_at_1"], 1.0)   # the oracle stub
         notes = " ".join(sanad["notes"])
-        for text in ("near its ceiling", "exact attribute label", "English-only and Arabic-only queries are the discriminating comparison"):
+        for text in ("near its ceiling", "exact attribute label", "by datasheet language", "query's own language",
+                     "cross-lingual queries the engine never makes"):
             self.assertIn(text, notes)
+        self.assertNotIn("discriminating", notes)   # the one-label gain is cross-lingual, not a same-language comparison
 
     def test_the_evidence_directory_is_written_only_with_repeat(self):
         self.assertEqual(evaluate_hf.EVIDENCE_DIR, ROOT / "reports" / "hf")

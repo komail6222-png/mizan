@@ -74,8 +74,11 @@ RASID_NOTES = ["The ridge view (baseline) and the Chronos view (model) come from
                "Paired comparisons use only this run's costs; the gate compares the ridge totals with the shipped file "
                "(gate.total_cost_relative_difference), not single days."]
 SANAD_NOTES = ["The bilingual query is near its ceiling for the lexical retriever because the grammar only accepts lines "
-               "beginning with the exact attribute label and the engine's bilingual query is exactly those labels, so the "
-               "English-only and Arabic-only queries are the discriminating comparison.",
+               "beginning with the exact attribute label and the engine's bilingual query is exactly those labels.",
+               "Read the English-only and Arabic-only queries by datasheet language (metrics.<query>.en and .ar): on "
+               "datasheets in the query's own language they compare the retrievers within one language, while on "
+               "datasheets in the other language they are cross-lingual queries the engine never makes, because it always "
+               "joins both labels; a one-label result over all datasheets mixes the two.",
                "Verdicts are not recomputed from either ranking: the grammar keeps verdict authority."]
 QUERIES_UNIT = "(document, attribute) pairs, each ranked with three query kinds"
 

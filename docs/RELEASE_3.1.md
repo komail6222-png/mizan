@@ -133,6 +133,7 @@ CI stays torch-free: the harnesses are tested with stub models in `tests/test_hf
 - **Many intervals, no correction.** This release reports several 95% intervals (paired cost differences, forecast-accuracy differences and risk premiums), each on its own, with no correction for multiple comparisons. The one resolved cost gain, Chronos risk-neutral against the seasonal baseline, has an upper bound of −0.018 per day.
 - **Accuracy intervals are derived, not re-run.** `reports/hf/rasid_intervals.json` applies the shipped bootstrap to the per-day values already in `reports/hf/rasid.json` (and, for ridge against seasonal naive, in `reports/evaluation/rasid.json`); it names both files' SHA-256, and a test recomputes it byte for byte.
 - **One settings text is out of date in the published file.** `settings.quantile_repair` in `reports/hf/rasid.json` says solar is clipped "before scoring and planning"; solar is never scored, only clipped before planning. The source text is corrected; the published file keeps the old text until the next evidence run.
+- **One SANAD note predates its correction.** The first note in `reports/hf/sanad.json` calls the English-only and Arabic-only queries "the discriminating comparison"; their gain is cross-lingual and they lose within one language (above). The source notes now say to read them by datasheet language; the published file keeps the old note until the next evidence run.
 
 ## Evidence and limits
 
