@@ -2,10 +2,11 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>MIZAN exhibit</title><style>
+/* Readex Pro: Copyright 2018 The Readex Pro Project Authors (https://github.com/ThomasJockin/readexpro), with Reserved Font Name "RevReading Lexend". Licensed under the SIL Open Font License, Version 1.1 (OFL-1.1); the licence text is OFL-ReadexPro.txt, in mizan/web/fonts/ of the MIZAN source. */
 @font-face{font-family:"Readex";src:url(data:font/woff2;base64,%%FONT_WOFF2%%) format("woff2");font-weight:160 700;font-display:swap}
 :root{--paper:#e6eaee;--sheet:#f5f7f8;--ink:#0e1c36;--ink2:#2a3954;--graphite:#56637c;--rule:#c8d0d9;--rule2:#dbe1e7;
  --brass:#8a5f1c;--brass-lite:#e4c68b;--verdigris:#256b5b;--verdigris-wash:#dcece7;--breach:#b0351f;--breach-wash:#f6dfd9;
- --caution:#875a07;--caution-wash:#f4e6c9;--focus:#c48a2c}
+ --caution:#875a07;--caution-wash:#f4e6c9;--focus:#8a5f1c}
 *{box-sizing:border-box}
 html{background:var(--paper)}
 body{margin:0;color:var(--ink);background:var(--paper);font:350 16px/1.55 "Readex",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -198,7 +199,7 @@ footer .wrap{padding-top:18px;padding-bottom:28px;color:var(--graphite);font-siz
 <main class="wrap">
 <section id="trust" class="seal" aria-live="polite"><span class="state pending">Checking signatures…</span><p class="hint">Recomputing every digest and signature in this browser.</p></section>
 <nav aria-label="Products" id="tabs"></nav>
-<section id="view" aria-live="polite"></section>
+<section id="view"></section>
 <details class="evidence"><summary>Run evidence</summary><p class="hint">Each result was verified by the local coordinator and committed with a signed receipt. This exhibit replays those recorded decisions; it does not run new ones.</p><div id="runs"></div><button class="dl" id="download">Download run JSON</button></details>
 </main>
 <footer><div class="wrap"><span>Generated fixtures only. Energy costs are illustrative units.</span><a href="https://github.com/komail6222-png/mizan">Source code and evidence</a></div></footer>
@@ -209,11 +210,11 @@ const evidenceJSON=document.querySelector('#data').textContent;const packet=JSON
 const solo=document.documentElement.dataset.product;const domains=['SANAD','BASIRA','RASID'];let cur=0,policy=0,rule=0,sample=0,risk=0,hourAt=-1,reveal=55;
 const qs=s=>document.querySelector(s), el=(tag,cl,txt)=>{const n=document.createElement(tag);if(cl)n.className=cl;if(txt!==undefined)n.textContent=txt;return n;};
 function put(root,tag,cl,txt){const n=el(tag,cl,txt);root.append(n);return n}
-function btn(root,label,pressed,cb,cl=''){const b=put(root,'button',cl,label);b.type='button';b.setAttribute('aria-pressed',String(pressed));b.onclick=cb;return b}
+function btn(root,label,pressed,cb,cl='',key=''){const b=put(root,'button',cl,label);b.type='button';b.setAttribute('aria-pressed',String(pressed));if(key)b.setAttribute('data-key',key);b.onclick=cb;return b}
 function pane(root,cl='pane'){return put(root,'div',cl)}
 function sheet(root,title,cl=''){const n=put(root,'div','sheet '+cl);if(title)put(n,'h2','',title);return n}
 function lede(box,kind,title,sub){const l=put(box,'div','lede'),a=put(l,'div');put(a,'p','kind',kind);put(a,'h1','',title);put(l,'p','sub',sub)}
-function switches(box,labels,idx,set){let g=put(box,'div','switch');g.setAttribute('role','group');labels.forEach((s,i)=>btn(g,s,i===idx,()=>{set(i);render()}))}
+function switches(box,labels,idx,set){let g=put(box,'div','switch');g.setAttribute('role','group');labels.forEach((s,i)=>btn(g,s,i===idx,()=>{set(i);render()},'','switch:'+i))}
 const verdictText={MEETS:'Meets',DOES_NOT_MEET:'Does not meet',REVIEW:'Needs review',FLAG:'Flagged for inspection',PASS:'Within normal range',ADVISORY_INSUFFICIENT_NORMALS:'Advisory only'};
 function chip(n,s){return put(n,'span','chip '+(['REVIEW','ADVISORY_INSUFFICIENT_NORMALS'].includes(s)?'review':s==='DOES_NOT_MEET'||s==='FLAG'?'bad':''),verdictText[s]||s.replaceAll('_',' ').toLowerCase())}
 const tone=s=>['REVIEW','ADVISORY_INSUFFICIENT_NORMALS'].includes(s)?'review':s==='DOES_NOT_MEET'||s==='FLAG'?'bad':'ok';
@@ -230,7 +231,7 @@ function sanad(root){const original=R.evidence,d=policy?original.policy_comparis
  switches(root,['Check all sources','Prefer approved schedule'],policy,x=>policy=x);
  const work=put(root,'div','work'),left=pane(work);put(left,'h2','','Tender requirements');
  const list=put(left,'div','rules');
- d.requirements.forEach((r,i)=>{const b=btn(list,'',i===rule,()=>{rule=i;render()},'rule');put(b,'span','req',names[r.rule.attribute]+' '+(r.rule.op==='ge'?'≥ ':'≤ ')+r.rule.threshold+' '+r.rule.unit);chip(b,r.verdict)});
+ d.requirements.forEach((r,i)=>{const b=btn(list,'',i===rule,()=>{rule=i;render()},'rule','rule:'+i);put(b,'span','req',names[r.rule.attribute]+' '+(r.rule.op==='ge'?'≥ ':'≤ ')+r.rule.threshold+' '+r.rule.unit);chip(b,r.verdict)});
  put(left,'p','hint',policy?'Prefer approved schedule: when sources disagree, the higher-authority document decides.':'Check all sources: every approved document must agree before the system decides.');
  const right=sheet(pane(work),''),r=d.requirements[rule];verdict(right,r.verdict);
  put(right,'p','hint',reasons[r.reason]||r.reason.replaceAll('_',' ').toLowerCase());
@@ -315,7 +316,9 @@ function rasid(root){const d=risk?R.neutral:R.energy,c=d.certificate,p=d.plan,f=
  const wrap=put(root,'div','span'),dt=put(wrap,'details','hourly');put(dt,'summary','','Show 24 hourly decisions');const tab=put(dt,'table'),tr=put(tab,'tr');['UTC','Charge kW','Discharge kW','SoC kWh'].forEach(v=>put(tr,'th','',v));
  p.charge.forEach((v,i)=>{const t=put(tab,'tr');[f.timestamps[i].slice(11,16),Math.abs(v).toFixed(2),Math.abs(p.discharge[i]).toFixed(2),p.soc[i].toFixed(2)].forEach(x=>put(t,'td','',x))});
 }
-function render(){qs('#tabs').replaceChildren();domains.forEach((s,i)=>{if(!solo||solo===s)btn(qs('#tabs'),s,i===cur,()=>{cur=i;render()})});let v=qs('#view');v.replaceChildren();[sanad,basira,rasid][cur](v)}
+function render(){const was=document.activeElement,key=was&&was.getAttribute?was.getAttribute('data-key'):null; // the control that had focus
+ qs('#tabs').replaceChildren();domains.forEach((s,i)=>{if(!solo||solo===s)btn(qs('#tabs'),s,i===cur,()=>{cur=i;render()},'','tab:'+i)});let v=qs('#view');v.replaceChildren();[sanad,basira,rasid][cur](v);
+ if(key){const b=document.querySelector('[data-key="'+key+'"]');if(b&&b.focus)b.focus()}} // keeps keyboard focus on the same control after a redraw
 packet.run.receipts.forEach(r=>put(qs('#runs'),'p','mini mono',r.fixture+', revision '+r.deployment+', sha256 '+r.result_digest));
 qs('#download').onclick=()=>{const url=URL.createObjectURL(new Blob([evidenceJSON],{type:'application/json'}));const a=el('a');a.href=url;a.download='mizan-demo-results.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 

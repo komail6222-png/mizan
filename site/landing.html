@@ -10,10 +10,11 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 40'%3E%3Cg fill='none' stroke='%238a5f1c' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M24 9v25M15 36h18M5 11h38M5 11l-4 10h8zM43 11l-4 10h8z'/%3E%3C/g%3E%3C/svg%3E">
 <style>
+/* Readex Pro: Copyright 2018 The Readex Pro Project Authors (https://github.com/ThomasJockin/readexpro), with Reserved Font Name "RevReading Lexend". Licensed under the SIL Open Font License, Version 1.1 (OFL-1.1); the licence text is OFL-ReadexPro.txt at the site root and in mizan/web/fonts/ of the MIZAN source. */
 @font-face{font-family:"Readex";src:url(data:font/woff2;base64,%%FONT_WOFF2%%) format("woff2");font-weight:160 700;font-display:swap}
 :root{--paper:#e6eaee;--sheet:#f5f7f8;--ink:#0e1c36;--ink2:#2a3954;--graphite:#56637c;--rule:#c8d0d9;--rule2:#dbe1e7;
  --brass:#8a5f1c;--brass-lite:#e4c68b;--verdigris:#256b5b;--verdigris-wash:#dcece7;--breach:#b0351f;--breach-wash:#f6dfd9;
- --caution:#875a07;--caution-wash:#f4e6c9;--focus:#c48a2c;--spring:cubic-bezier(.25,1.45,.45,1)}
+ --caution:#875a07;--caution-wash:#f4e6c9;--focus:#8a5f1c;--spring:cubic-bezier(.25,1.45,.45,1)}
 *{box-sizing:border-box}
 html{background:var(--paper);scroll-behavior:smooth}
 body{margin:0;color:var(--ink);background:var(--paper);font:350 17px/1.6 "Readex",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -436,9 +437,11 @@ btn.onclick=async()=>{
 
 /* The six steps */
 let stepAt=4;
-function paintRail(){const ol=$('#rail');ol.replaceChildren();t('steps').forEach(([name],i)=>{const li=document.createElement('li'),b=document.createElement('button');b.type='button';
+function paintRail(){const ol=$('#rail'),had=[...ol.querySelectorAll('button')].indexOf(document.activeElement);ol.replaceChildren(); // had: the step button with focus, if any
+ t('steps').forEach(([name],i)=>{const li=document.createElement('li'),b=document.createElement('button');b.type='button';
   b.setAttribute('aria-pressed',String(i===stepAt));const d=document.createElement('span');d.className='dot';d.textContent=String(i+1);const l=document.createElement('span');l.className='lbl';l.textContent=name;
   b.append(d,l);b.onclick=()=>{stepAt=i;paintRail()};li.append(b);ol.append(li)});
+ if(had>=0)ol.querySelectorAll('button')[had].focus(); // focus stays on the same step after the redraw
  const c=$('#stepcard'),[name,desc]=t('steps')[stepAt];c.replaceChildren();const n=document.createElement('div');n.className='n';n.textContent=t('step')(stepAt+1);
  const h=document.createElement('h3');h.textContent=name;const p=document.createElement('p');p.textContent=desc;c.append(n,h,p)}
 
