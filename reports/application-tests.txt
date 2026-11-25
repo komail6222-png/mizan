@@ -1,13 +1,13 @@
 # Release 3.1 application tests (unreleased) — local run (25 November 2026)
 # Python 3.12.16 (uv) · SQLite 3.53.1 · NumPy 2.3.5 · SciPy 1.17.0 · FastAPI 0.141.1 · httpx 0.28.1 · PyMuPDF 1.26.6
 # Ubuntu 26.04.1 LTS under WSL2 (kernel 6.18.58.1) on Windows 11, Intel Core i7-13645HX, x86_64
-# Main environment (.venv, every dependency in requirements.txt, no torch): 161 tests, 157 passed, 4 skipped.
+# Main environment (.venv, every dependency in requirements.txt, no torch): 171 tests, 167 passed, 4 skipped.
 # The 4 skips are the Hugging Face loader tests (tests/test_hf_models.py LoaderTests), which need torch, transformers,
 # chronos-forecasting and MIZAN_HF_MODELS. They were run in the optional .venv-hf (requirements-hf.txt: torch 2.15.0+cpu,
 # transformers 4.57.6, chronos-forecasting 2.3.2, Python 3.12.16) against the verified checkpoints:
 #   MIZAN_HF_MODELS=var/hf .venv-hf/bin/python -m unittest tests.test_hf_models.LoaderTests -v
-# .venv-hf result: Ran 4 tests in 1.997s: OK (test_chronos_quantiles, test_dinov2_grid, test_e5_normalised, test_identity_matches_pin)
-# Python 3.13.18 result (uv, SQLite 3.53.1, the same pins, the same 4 loader tests skipped): Ran 161 tests in 51.009s: OK (skipped=4)
+# .venv-hf result: Ran 4 tests in 2.518s: OK ()
+# Python 3.13.18 result (uv, SQLite 3.53.1, the same pins, the same 4 loader tests skipped): Ran 171 tests in 56.333s: OK (skipped=4)
 # MCP conformance used the official mcp client 2.3.0.
 # Previous record (3.0 local verification run, 21 November 2026): 102 tests, all passed; see reports/local-verification.md.
 # Command: python -m unittest discover -s tests -v
@@ -44,6 +44,7 @@ test_crash_on_either_side_of_publish_commit (test_broker.ProcessCrashTests.test_
 test_every_policy_is_solved_verified_and_summarized (test_evaluation.DecisionQualityTests.test_every_policy_is_solved_verified_and_summarized) ... ok
 test_paired_comparison_interval_brackets_its_estimate (test_evaluation.DecisionQualityTests.test_paired_comparison_interval_brackets_its_estimate) ... ok
 test_tail_mean_uses_the_worst_share (test_evaluation.DecisionQualityTests.test_tail_mean_uses_the_worst_share) ... ok
+test_intervals_derived_from_other_evidence_stop_the_build (test_evaluation.ReportPageTests.test_intervals_derived_from_other_evidence_stop_the_build) ... ok
 test_report_embeds_only_summary_data_and_escapes_markup (test_evaluation.ReportPageTests.test_report_embeds_only_summary_data_and_escapes_markup) ... ok
 test_report_summarizes_the_hugging_face_evaluation (test_evaluation.ReportPageTests.test_report_summarizes_the_hugging_face_evaluation) ... ok
 test_acknowledgement_and_transcript_counterfactuals (test_explain.SanadExplanationTests.test_acknowledgement_and_transcript_counterfactuals) ... ok
@@ -100,6 +101,12 @@ test_oracle_embedder_scores_one_and_lexical_is_bounded (test_hf_evaluation.Sanad
 test_oracle_is_perfect_for_every_query_kind_and_language (test_hf_evaluation.SanadHarnessTests.test_oracle_is_perfect_for_every_query_kind_and_language) ... ok
 test_refuses_malformed_embeddings (test_hf_evaluation.SanadHarnessTests.test_refuses_malformed_embeddings) ... ok
 test_set_layout_one_gold_line_per_attribute_and_fixed_distractors (test_hf_evaluation.SanadHarnessTests.test_set_layout_one_gold_line_per_attribute_and_fixed_distractors) ... ok
+test_each_comparison_reads_its_own_series (test_hf_intervals.DerivedIntervalTests.test_each_comparison_reads_its_own_series) ... ok
+test_each_input_is_pinned_by_its_sha256 (test_hf_intervals.DerivedIntervalTests.test_each_input_is_pinned_by_its_sha256) ... ok
+test_intervals_use_the_shipped_bootstrap_and_no_other (test_hf_intervals.DerivedIntervalTests.test_intervals_use_the_shipped_bootstrap_and_no_other) ... ok
+test_main_writes_the_same_bytes_readable_by_all (test_hf_intervals.DerivedIntervalTests.test_main_writes_the_same_bytes_readable_by_all) ... ok
+test_the_committed_file_is_exactly_what_its_inputs_give (test_hf_intervals.DerivedIntervalTests.test_the_committed_file_is_exactly_what_its_inputs_give) ... ok
+test_the_planner_facts_behind_the_risk_weighted_reading (test_hf_intervals.DerivedIntervalTests.test_the_planner_facts_behind_the_risk_weighted_reading) ... ok
 test_identity_separates_the_signed_import_from_the_reproducible_manifest (test_hf_models.CheckpointVerificationTests.test_identity_separates_the_signed_import_from_the_reproducible_manifest) ... ok
 test_loaders_and_identity_refuse_a_checkpoint_that_was_never_imported (test_hf_models.CheckpointVerificationTests.test_loaders_and_identity_refuse_a_checkpoint_that_was_never_imported) ... ok
 test_chronos_quantiles (test_hf_models.LoaderTests.test_chronos_quantiles) ... skipped 'optional HF runtime'
@@ -159,11 +166,14 @@ test_supported_arabic_typography_and_units (test_sanad_v2.ArabicCoverageTests.te
 test_acknowledge_title_then_run_and_verify (test_sanad_v2.OperatorCliTests.test_acknowledge_title_then_run_and_verify) ... ok
 test_previous_grammar_is_refused_with_an_actionable_code (test_sanad_v2.ProfileUpgradeTests.test_previous_grammar_is_refused_with_an_actionable_code) ... ok
 test_upgrade_preserves_approvals_and_is_idempotent (test_sanad_v2.ProfileUpgradeTests.test_upgrade_preserves_approvals_and_is_idempotent) ... ok
+test_accuracy_phrases_follow_the_sign_of_the_derived_interval (test_site.FoundationModelFactsTests.test_accuracy_phrases_follow_the_sign_of_the_derived_interval) ... ok
+test_derived_intervals_must_come_from_the_evidence_as_it_is (test_site.FoundationModelFactsTests.test_derived_intervals_must_come_from_the_evidence_as_it_is) ... ok
 test_facts_read_each_model_next_to_the_current_component (test_site.FoundationModelFactsTests.test_facts_read_each_model_next_to_the_current_component) ... ok
 test_landing_shows_the_block_with_both_sides_in_both_languages (test_site.FoundationModelFactsTests.test_landing_shows_the_block_with_both_sides_in_both_languages) ... ok
 test_landing_states_the_test_counts_and_keeps_arabic_figures_left_to_right (test_site.FoundationModelFactsTests.test_landing_states_the_test_counts_and_keeps_arabic_figures_left_to_right) ... ok
 test_rasid_phrase_follows_the_sign_of_the_interval (test_site.FoundationModelFactsTests.test_rasid_phrase_follows_the_sign_of_the_interval) ... ok
 test_test_counts_are_read_from_the_record_and_fail_closed (test_site.FoundationModelFactsTests.test_test_counts_are_read_from_the_record_and_fail_closed) ... ok
+test_the_3_0_forecast_line_states_its_interval (test_site.FoundationModelFactsTests.test_the_3_0_forecast_line_states_its_interval) ... ok
 test_wording_that_no_longer_matches_the_evidence_stops_the_build (test_site.FoundationModelFactsTests.test_wording_that_no_longer_matches_the_evidence_stops_the_build) ... ok
 test_init_anchor_and_audit (test_witness.WitnessCliTests.test_init_anchor_and_audit) ... ok
 test_anchor_report_tail_and_reanchor (test_witness.WitnessTests.test_anchor_report_tail_and_reanchor) ... ok
@@ -175,6 +185,6 @@ test_rewritten_local_history_is_detected (test_witness.WitnessTests.test_rewritt
 test_witness_refuses_malformed_forked_and_foreign_batches (test_witness.WitnessTests.test_witness_refuses_malformed_forked_and_foreign_batches) ... ok
 
 ----------------------------------------------------------------------
-Ran 161 tests in 56.196s
+Ran 171 tests in 57.322s
 
 OK (skipped=4)
