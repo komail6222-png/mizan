@@ -1,6 +1,6 @@
 # Qualification record | local CPU release
 
-Updated for release 3.0 and for the 3.1 Hugging Face evaluation (unreleased). Changes and their evidence are in `docs/RELEASE_3.1.md`, `docs/RELEASE_3.0.md`, `docs/RELEASE_2.3.md` and `docs/RELEASE_2.2.md`. Safety evidence is in `reports/safety/safety.json`. A visual summary of the evaluations is `reports/evaluation/index.html`.
+Updated for release 3.0 and for the 3.1 Hugging Face evaluation (unreleased). Changes and their evidence are in `docs/RELEASE_3.1.md`, `docs/RELEASE_3.0.md`, `docs/RELEASE_2.3.md` and `docs/RELEASE_2.2.md`. Safety evidence is in `reports/safety/safety.json`. A visual summary of the evaluations is `reports/evaluation/index.html`, and of the Hugging Face comparison `reports/evaluation/models.html`.
 
 The bundled results come from one local host, one operator trust domain and generated inputs. A passing application test may exercise part of an architectural acceptance case. The counts in those two sets have different meanings.
 

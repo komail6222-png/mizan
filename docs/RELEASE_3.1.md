@@ -2,15 +2,15 @@
 
 Unreleased (prepared 25 November 2026) · Builds on 3.0. The version strings in `pyproject.toml` and `CITATION.cff`, the tag and the GitHub release change together when the owner approves publication.
 
-3.0 pinned three Hugging Face checkpoints and could import them with a verified, signed manifest, but none of its reported numbers used them. 3.1 asks one question per system: **does a pretrained foundation model do better than MIZAN's current component, on the same held-out data and the same metrics?** Each model replaces one component, frozen, inside the existing evaluation protocol, and the answer is published whichever way it goes. It is mixed: no model is better on every measure. Of the two economic comparisons with the current forecaster, the risk-neutral one is not resolved and the risk-weighted one is resolved against Chronos (+1.060 per day, 95% interval +0.328 to +1.641). The deployed engines, profiles, signed exhibit and pinned key are unchanged.
+3.0 pinned three Hugging Face checkpoints and could import them with a verified, signed manifest, but none of its reported numbers used them. 3.1 asks one question per system: **does a pretrained foundation model do better than MIZAN's current component, on the same held-out data and the same metrics?** Each model replaces one component, frozen, inside the existing evaluation protocol, and the answer is published whichever way it goes. It is mixed: no model is better on every measure, and most differences are not resolved by this protocol. Of the two economic comparisons with the current forecaster, the risk-neutral one is not resolved and the risk-weighted one is resolved against Chronos (+1.060 per day, 95% interval +0.328 to +1.641), a result shaped by the fixed rule that turns Chronos's quantiles into planning scenarios as well as by the forecaster. The deployed engines, profiles, signed exhibit and pinned key are unchanged.
 
 3.1 also carries the interface redesign that followed 3.0.
 
 ## 1. A redesigned interface and a bilingual introduction
 
 - **Exhibit, Spaces and `mizan serve`.** A new instrument-like design with an embedded Readex Pro typeface (Arabic and Latin, `mizan/web/fonts/`, OFL), so no page fetches a font. New views are drawn from data the old page did not show: an image wipe and per-patch readout for BASIRA, the calibration bank against its alert threshold, linked hour-by-hour forecast and battery charts, the verifier's eleven constraint groups and the scenario costs for RASID. The pages were rebuilt from the same signed packet (`scripts/build_exhibit.py`, `scripts/build_spaces.py`); the in-page verification code is unchanged and the pinned key `9a627609…df436` still applies.
-- **A bilingual introduction at the site root** (`site/landing.html`, built by `scripts/build_site.py`). A balance weighs the seven signed results while the browser recomputes each signature, and tips when one digit is changed. English and Arabic, with right-to-left layout. Every figure on it is read from `reports/` at build time, and the build refuses to run if a sentence no longer matches the evidence: "resolved" and "not resolved" must match the sign of each 95% interval, each comparison the foundation-model block states in words (lower, worse, roughly equal, more or less often) must still hold in `reports/hf/`, and the test counts must match `reports/application-tests.txt`, including where its skipped tests ran. The exhibit moved to `/exhibit/`.
-- **Checks.** Text colours meet WCAG AA contrast on every page, checked against the rendered pages. `scripts/check_exhibits.py --site` checks the introduction in Chromium (verification, tamper and restore, Arabic RTL, no overflow, zero external requests), and the Pages workflow runs it before every deploy.
+- **A bilingual introduction at the site root** (`site/landing.html`, built by `scripts/build_site.py`). A balance weighs the seven signed results while the browser recomputes each signature, and tips when one digit is changed. English and Arabic, with right-to-left layout. Every figure on it is read from `reports/` at build time, and the build refuses to run if a sentence no longer matches the evidence: "resolved" and "not resolved" must match the sign of each 95% interval, every forecast-accuracy difference is stated with its paired interval from `reports/hf/rasid_intervals.json` (which must have been derived from the evidence files as they are), each other comparison the foundation-model block states in words (roughly equal, more or less often, by datasheet language) must still hold in `reports/hf/`, and the test counts must match `reports/application-tests.txt`, including where its skipped tests ran. The exhibit moved to `/exhibit/`.
+- **Checks.** `scripts/check_exhibits.py` audits WCAG AA text contrast from the computed styles of the rendered pages (the exhibit views and Spaces, both report pages in their light and dark palettes, and the introduction in English and Arabic) and fails on any violation; the counts are in `reports/browser-checks.json`. It also checks that keyboard focus stays on a control the page redraws. With `--site` it checks the introduction in Chromium (verification, tamper and restore, Arabic RTL, no overflow, zero external requests), and the Pages workflow runs it before every deploy, with Playwright pinned and Pages write access given only to the deploy job.
 
 ## 2. Three foundation models on the held-out protocol
 
@@ -34,7 +34,7 @@ Unreleased (prepared 25 November 2026) · Builds on 3.0. The version strings in 
 
 ## 3. Results
 
-Every figure below is in `reports/hf/{basira,rasid,sanad}.json` and in the "Foundation models from Hugging Face" section of the evaluation report (`reports/evaluation/index.html#hf-section`).
+Every figure below is in `reports/hf/{basira,rasid,sanad}.json`, or for the accuracy intervals and risk premiums in `reports/hf/rasid_intervals.json`, and on the report's models page (`reports/evaluation/models.html`, served as `report/models.html`).
 
 ### BASIRA: DINOv2-small as the inspection descriptor
 
@@ -50,7 +50,7 @@ Every figure below is in `reports/hf/{basira,rasid,sanad}.json` and in the "Foun
 
 The frozen test and the long-run rate rest on one bank of 24 calibration parts. That bank is an unlucky one for the shipped descriptor (a bank this bad or worse occurs 3.7% of the time) and an ordinary one for DINOv2 (78.6%). Over 400 banks per size, under the shipped split-conformal rule, the mean false-alert rates differ by at most about 0.2 percentage points (0.20 at m = 50), within the ±0.35-point precision the study states for each rate, so they are roughly equal. The share of banks above 5% is lower with DINOv2 at m = 24 and 50 and higher at m = 100; no interval is reported for these shares. Detection stayed at 100% for both at every size. DINOv2's 16 × 16 grid means the engine's top-2.5% rule averages 7 of 256 patches, against 4 for the shipped descriptor (`patches_averaged`).
 
-**Reading.** DINOv2 cuts the frozen test's false alerts from 8 to 1, but the study shows that most of that gain comes from the one bank: on average over banks, the two descriptors are about equally calibrated on these generated rings.
+**Reading.** DINOv2 cuts the frozen test's false alerts from 8 to 1, but the study shows that most of that gain comes from the one bank. Equal mean false-alert rates over banks are what split-conformal calibration predicts for any descriptor, so they are no evidence about DINOv2 itself, and detection is at 100% for both, so it does not separate them either.
 
 ### RASID: Chronos-Bolt-tiny as the load and solar forecaster
 
@@ -63,6 +63,15 @@ The frozen test and the long-run rate rest on one bank of 24 calibration parts. 
 | Total cost, risk-neutral planner | 16,383.52 | 16,375.43 |
 | Total cost, risk-weighted planner | 16,441.88 | 16,505.49 |
 
+Paired daily differences in forecast accuracy (Chronos minus ridge, day by day), with the same bootstrap as the cost comparisons applied to the per-day values in `reports/hf/rasid.json` (`scripts/derive_hf_intervals.py`, no model re-run):
+
+| Measure | Mean daily difference | 95% interval | Reading |
+|---|---|---|---|
+| Load MAE (kW) | −0.221 | −0.698 to +0.118 | Not resolved, spans zero |
+| Mean pinball loss | +0.040 | −0.063 to +0.135 | Not resolved, spans zero |
+| Truncated CRPS | +0.047 | −0.138 to +0.219 | Not resolved, spans zero |
+| 80% interval coverage | −9.6 points | −16.7 to −0.3 points | Lower, excludes zero |
+
 Paired differences in mean daily cost (the Chronos policy minus the reference; negative means Chronos cost less), 95% moving-block bootstrap intervals with 7-day blocks, 4,000 draws, seed 2026:
 
 | Comparison | Mean daily difference | 95% interval | Days cheaper / costlier | Reading |
@@ -71,9 +80,18 @@ Paired differences in mean daily cost (the Chronos policy minus the reference; n
 | Chronos risk-neutral − seasonal baseline | −0.441 | −0.910 to −0.018 | 38 / 22 | Cheaper, excludes zero |
 | Chronos risk-weighted − ridge risk-weighted | +1.060 | +0.328 to +1.641 | 18 / 42 | Costlier, excludes zero |
 
-**Reading.** Chronos's median forecast is more accurate than the ridge forecast, but its quantiles score worse: mean pinball loss and CRPS over the three levels are higher, and its 80% intervals cover 65.1% of the load hours against 74.7%. With the same risk-neutral planner, the forecast value of Chronos over ridge is not resolved by these 60 days. Against the seasonal baseline, the Chronos risk-neutral policy is cheaper with an interval that excludes zero, though its upper end (−0.018) is close to it; the ridge forecast's own value against that baseline was not resolved in 3.0. The risk-weighted planner built on Chronos's five quantile scenarios costs more than the ridge one, and that interval excludes zero. All 420 plans (seven policies × 60 days) passed the independent verifier.
+Risk-weighted plans (both forecasters with the risk weight 0.35):
 
-Scenarios: five equally weighted paths from the Chronos quantiles at 0.1, 0.3, 0.5, 0.7 and 0.9, load path j paired with solar path 4 − j (high load meets low solar). The ridge policies keep their four reduced residual scenarios as shipped. Chronos quantiles are sorted across levels at each hour (monotone rearrangement), and 2,707 negative solar values were clipped to zero before planning (solar is not scored).
+| Measure (60 days) | Ridge forecaster | Chronos-Bolt-tiny |
+|---|---|---|
+| Total cost | 16,441.88 | 16,505.49 |
+| Mean of the worst 10% of days (empirical CVaR90) | 321.07 | 320.47 |
+| Worst day | 366.27 | 362.30 |
+| Premium over the same forecaster's risk-neutral plan, per day (95% interval) | +0.973 (+0.338 to +1.657) | +2.168 (+1.565 to +2.755) |
+
+**Reading.** On these 60 days the accuracy differences are not resolved, except coverage: Chronos's median has the lower mean load error (2.572 against 2.794 kW) and its quantiles the higher mean pinball loss and CRPS, but the paired intervals of all three span zero. Its 80% intervals cover fewer load hours (65.1% against 74.7%), a resolved difference. With the same risk-neutral planner, the forecast value of Chronos over ridge is not resolved by these 60 days. Against the seasonal baseline, the Chronos risk-neutral policy is cheaper with an interval that excludes zero, though its upper end (−0.018) is close to it; the ridge forecast's own value against that baseline was not resolved in 3.0, and neither is the ridge forecast's lower load error against the seasonal baseline (−0.274 kW per day, 95% interval −0.559 to +0.056). The risk-weighted planner built on Chronos's quantiles by the fixed scenario rule costs more than the ridge one, and that interval excludes zero; the scenario rule shapes that result as well as the forecaster (below). All 420 plans (seven policies × 60 days) passed the independent verifier.
+
+Scenarios: five equally weighted paths from the Chronos quantiles at 0.1, 0.3, 0.5, 0.7 and 0.9, load path j paired with solar path 4 − j (high load meets low solar), each path held at one quantile level for all 24 hours. The ridge policies keep their four reduced residual scenarios as shipped, built from past days' forecast errors. The risk-weighted planner minimises 0.65 × expected scenario cost + 0.35 × CVaR at β = 0.90 (`mizan/rasid/solver.py`, settings from `mizan.examples.settings`). Because every Chronos scenario weighs 0.2, at least 1 − β, the CVaR term is the cost of the costliest of the five scenarios alone, so the risk weight acts on one fixed-level path. Chronos's own risk premium (+2.168 per day) is larger than ridge's (+0.973), while its realised tail is no worse (mean of the worst 10% of days 320.47 against 321.07, worst day 362.30 against 366.27; no interval for these). The risk-weighted comparison therefore measures the scenario rule as well as the forecaster. Chronos quantiles are sorted across levels at each hour (monotone rearrangement), and 2,707 negative solar values were clipped to zero before planning (solar is not scored).
 
 ### SANAD: multilingual-E5-small as the evidence retriever
 
@@ -89,19 +107,19 @@ Scenarios: five equally weighted paths from the Chronos quantiles at 0.1, 0.3, 0
 | Arabic label only, recall@3 | 77.3% | 93.2% |
 | Arabic label only, MRR@4 | 0.688 | 0.826 |
 
-**Reading.** With the engine's bilingual query, E5 ranks the claim line first less often than the lexical retriever (80.5% against 96.9%). That comparison is near its ceiling for the lexical retriever: the grammar accepts only lines that start with the exact attribute label, and the engine's bilingual query is exactly those labels (English and Arabic joined), so a character-trigram match finds them; 473 of 488 pairs are ranked first, and every English datasheet scores 100%. The discriminating comparison is a query in one language: with the English label alone E5 ranks the claim line first 77.7% of the time against 61.1%, and with the Arabic label alone 72.5% against 60.2%. The gain is cross-lingual: with the English label on Arabic datasheets E5 scores 69.9% against 23.7%, and with the Arabic label on English datasheets 67.4% against 25.1%. On datasheets in the query's own language the lexical retriever still ranks the claim first more often (100.0% against 85.8% in English, 94.0% against 77.5% in Arabic).
+**Reading.** With the engine's bilingual query, E5 ranks the claim line first less often than the lexical retriever (80.5% against 96.9%). That comparison is near its ceiling for the lexical retriever: the grammar accepts only lines that start with the exact attribute label, and the engine's bilingual query is exactly those labels (English and Arabic joined), so a character-trigram match finds them; 473 of 488 pairs are ranked first, and every English datasheet scores 100%. With a query in one language, E5 ranks the claim line first more often: 77.7% of the time against 61.1% with the English label alone, and 72.5% against 60.2% with the Arabic label alone. That gain is entirely cross-lingual: with the English label on Arabic datasheets E5 scores 69.9% against 23.7%, and with the Arabic label on English datasheets 67.4% against 25.1%, a query the engine never makes (it always joins both labels). On datasheets in the query's own language the lexical retriever ranks the claim first more often (100.0% against 85.8% in English, 94.0% against 77.5% in Arabic). No interval is reported for these rates: the 488 pairs share 120 datasheets, the same few query strings (each attribute's labels) and one fixed pool of near-miss lines per language, so they are not independent, and the per-pair ranks are not in the evidence, so an interval would need a new run.
 
 `queries` in the report counts (document, attribute) pairs: 488 (239 on English datasheets, 249 on Arabic ones), each ranked with three query kinds (bilingual, English label only, Arabic label only). Both retrievers rank every line of the datasheet, the heading included; the engine returns its top four, so reciprocal rank is 0 beyond rank four. Gold is the line `sanad.engine.parse_document` extracts as the claim for each attribute, and the generator stops unless every attribute line is that claim and no other line is any claim. Verdicts are not recomputed from either ranking.
 
 ## 4. Provenance and reproduction
 
-`reports/hf/` was produced by commit `c5becb0` and has not changed since. The canonical command is
+`reports/hf/{basira,rasid,sanad}.json` were produced by commit `c5becb0` and have not changed since. The canonical command is
 
 ```bash
 python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat
 ```
 
-run in the optional `.venv-hf` environment (`requirements-hf.txt`, CPU-only torch) with `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`, as `scripts/evaluate_hf.py` documents. `--out` is required, and `reports/hf` is refused without `--repeat`, so every published file records its repeat run. The environment recorded in each file: Python 3.12.16, NumPy 2.3.5, SciPy 1.17.0, torch 2.15.0+cpu, transformers 4.57.6, tokenizers 0.22.2, chronos-forecasting 2.3.2, 8 torch threads, on Linux x86_64 with an Intel Core i7-13645HX. Elapsed: BASIRA 868.8 s (repeat 850.5 s), RASID 13.2 s (11.4 s), SANAD 15.2 s (13.2 s).
+run in the optional `.venv-hf` environment (`requirements-hf.txt`, CPU-only torch from the PyTorch CPU index; `requirements-hf.lock.txt` lists that environment's full package set) with `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`, as `scripts/evaluate_hf.py` documents. `docs/TECHNICAL_GUIDE.md` gives the setup commands, how to check a reproduction in a scratch directory, the fields that differ by design on another machine, and the measured memory and disk use. `reports/hf/rasid_intervals.json` was then derived from `rasid.json` by `scripts/derive_hf_intervals.py` (torch-free). `--out` is required, and `reports/hf` is refused without `--repeat`, so every published file records its repeat run. The environment recorded in each file: Python 3.12.16, NumPy 2.3.5, SciPy 1.17.0, torch 2.15.0+cpu, transformers 4.57.6, tokenizers 0.22.2, chronos-forecasting 2.3.2, 8 torch threads, on Linux x86_64 with an Intel Core i7-13645HX. Elapsed: BASIRA 868.8 s (repeat 850.5 s), RASID 13.2 s (11.4 s), SANAD 15.2 s (13.2 s).
 
 CI stays torch-free: the harnesses are tested with stub models in `tests/test_hf_evaluation.py`, and the four tests that load the real checkpoints run only when torch is installed and `MIZAN_HF_MODELS` points at a verified cache.
 
@@ -111,10 +129,14 @@ CI stays torch-free: the harnesses are tested with stub models in `tests/test_hf
 - **Pinball loss and CRPS use the shared levels.** Both forecasters are scored on the levels 0.1, 0.5 and 0.9 (Chronos-Bolt is trained on 0.1 to 0.9 only), so the ridge values here (0.808 and 1.485) are not the shipped report's pinball loss and CRPS, which use the ridge forecaster's own levels. Compare Chronos only with these shared-level ridge values.
 - **The SANAD bilingual query is near the lexical ceiling by construction**, as explained above. The retrieval set was fixed before any E5 number existed and was not changed afterwards.
 - **One calibration bank.** BASIRA's frozen-test gain rests on one bank of 24 parts; read it with the study.
+- **The risk-weighted comparison measures the scenario rule too.** With five scenarios of weight 0.2 and β = 0.90, the planner's CVaR term is the costliest fixed-level Chronos path; the ridge policies plan on residual paths. The resolved +1.060 per day is not a pure forecast comparison.
+- **Many intervals, no correction.** This release reports several 95% intervals (paired cost differences, forecast-accuracy differences and risk premiums), each on its own, with no correction for multiple comparisons. The one resolved cost gain, Chronos risk-neutral against the seasonal baseline, has an upper bound of −0.018 per day.
+- **Accuracy intervals are derived, not re-run.** `reports/hf/rasid_intervals.json` applies the shipped bootstrap to the per-day values already in `reports/hf/rasid.json` (and, for ridge against seasonal naive, in `reports/evaluation/rasid.json`); it names both files' SHA-256, and a test recomputes it byte for byte.
+- **One settings text is out of date in the published file.** `settings.quantile_repair` in `reports/hf/rasid.json` says solar is clipped "before scoring and planning"; solar is never scored, only clipped before planning. The source text is corrected; the published file keeps the old text until the next evidence run.
 
 ## Evidence and limits
 
-- **Tests.** 161 tests. In the main environment (Python 3.12.16), 157 passed and the 4 model-loader tests were skipped without torch; those 4 passed in `.venv-hf` against the verified checkpoints. The suite also passed on Python 3.13.18 with the same 4 skips (`reports/application-tests.txt`). New in 3.1: `tests/test_hf_models.py`, `tests/test_hf_evaluation.py`, `tests/test_site.py`.
+- **Tests.** 161 tests. In the main environment (Python 3.12.16), 157 passed and the 4 model-loader tests were skipped without torch; those 4 passed in `.venv-hf` against the verified checkpoints. The suite also passed on Python 3.13.18 with the same 4 skips (`reports/application-tests.txt`). New in 3.1: `tests/test_hf_models.py`, `tests/test_hf_evaluation.py`, `tests/test_hf_intervals.py`, `tests/test_site.py`.
 - **The models never hold decision authority.** They supply rankings, features or forecasts. SANAD's grammar, BASIRA's calibrated threshold and RASID's independent verifier decide, as before, and nothing here changed a deployed engine. Switching an engine to a model would be a separate, signed `upgrade` decision by the operator.
 - **Generated data.** All inputs are generated fixtures: rings, load and solar histories, and datasheets. No result here extends to real parts, sites or tenders.
 - **CPU only.** Everything ran on one CPU; no GPU was used or qualified.
