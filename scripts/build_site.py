@@ -54,6 +54,8 @@ COPIED = {
     "exhibit/index.html": "reports/demo/MIZAN_Demo.html",
     "report/index.html": "reports/evaluation/index.html",
     "report/models.html": "reports/evaluation/models.html",
+    "report/visa/index.html": "reports/visa/index.html",       # BASIRA on real images (scripts/build_visa_report.py)
+    "report/visa/classes.html": "reports/visa/classes.html",
     **{f"{kind}/index.html": f"spaces/{kind}/index.html" for kind in SPACES},
     "og.png": "site/og.png",
     "OFL-ReadexPro.txt": "mizan/web/fonts/OFL-ReadexPro.txt",  # the licence of the typeface every page embeds
