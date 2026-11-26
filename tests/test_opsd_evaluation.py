@@ -203,5 +203,81 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("decision_quality.chronos.total_cost", gate["chronos"]["mismatches"])
 
 
+FORBIDDEN = ("euro", "EUR", "€", "saving", "money")
+
+
+def opsd_record(path=None):
+    """A complete record on the stand-in file with the stub forecaster, quick mode."""
+    import tempfile
+    from pathlib import Path
+    from mizan.opsd_evaluation import evaluate_opsd
+    from tests.opsd_fixture import make_opsd_csv
+    tmp = tempfile.mkdtemp()
+    csv_path = make_opsd_csv(Path(tmp) / "household.csv")
+    return evaluate_opsd(csv_path, stub_forecaster, quick=True), csv_path
+
+
+class RecordTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.record, cls.csv = opsd_record()
+
+    def test_record_shape(self):
+        from mizan import opsd
+        from mizan.hf_evaluation import POLICIES_HF
+        from mizan.opsd_evaluation import ACCURACY, COMPARISONS
+        r = self.record
+        self.assertEqual(set(r), {"identity", "settings", "quick", "notes", "sites", "pooled", "scenario_rule"})
+        self.assertEqual(r["identity"]["file_sha256"], opsd.FILE_SHA256)
+        self.assertEqual(set(r["sites"]), set(opsd.SITES))
+        for site, s in r["sites"].items():
+            with self.subTest(site):
+                self.assertEqual(set(s), {"building", "base", "counts", "export_gate", "forecast", "decision_quality", "share",
+                                          "paired", "accuracy", "plans", "run_lengths", "rows"})
+                self.assertEqual(s["counts"]["target_days"], len(s["rows"]))
+                self.assertEqual(sum(s["run_lengths"]), len(s["rows"]))
+                self.assertGreater(len(s["rows"]), 0)
+                self.assertEqual(set(s["share"]), set(POLICIES_HF))
+                self.assertEqual([(p["a"], p["b"]) for p in s["paired"]], [tuple(c) for c in COMPARISONS])
+                self.assertEqual([(p["a"], p["b"]) for p in s["accuracy"]], [tuple(c) for c in ACCURACY])
+                self.assertTrue(all(p["reading"] in ("higher", "lower", "not resolved") for p in s["paired"] + s["accuracy"]))
+                self.assertEqual(s["base"]["scale"] > 0, True)
+        self.assertEqual(set(r["pooled"]), {"share", "paired", "accuracy", "normalisers"})
+
+    def test_export_gate_stops_before_forecasting(self):
+        from unittest import mock
+        from mizan import opsd
+        from mizan.opsd_evaluation import evaluate_opsd
+        calls = []
+        def forecaster(*a):
+            calls.append(a)
+            return stub_forecaster(*a)
+        failing = {"sunny_hours": 3, "low_import_hours": 1, "passed": False, "solar_threshold_kw": 1., "import_threshold_kw": 1.}
+        with mock.patch.object(opsd, "export_gate", return_value=failing), self.assertRaises(Refused) as cm:
+            evaluate_opsd(self.csv, forecaster, quick=True)
+        self.assertEqual(cm.exception.code, "OPSD_EXPORT")
+        self.assertEqual(calls, [])
+
+    def test_pooled_uses_fixed_normalisers(self):
+        norm = self.record["pooled"]["normalisers"]
+        for site, s in self.record["sites"].items():
+            with self.subTest(site):
+                rows = s["rows"]
+                self.assertAlmostEqual(norm[site]["mean_daily_no_battery_cost"], float(np.mean([r["no_battery_cost"] for r in rows])), places=9)
+                self.assertAlmostEqual(norm[site]["mean_load_kw"], s["forecast"]["mean_load_kw"], places=9)
+        # Each pooled comparison is the equal-weight mean of the sites' normalised mean differences.
+        first = self.record["pooled"]["paired"][0]
+        want = np.mean([np.mean([r[first["a"] + "_cost"] - r[first["b"] + "_cost"] for r in s["rows"]]) / norm[site]["mean_daily_no_battery_cost"]
+                        for site, s in sorted(self.record["sites"].items())])
+        self.assertAlmostEqual(first["mean"], float(want), places=12)
+
+    def test_no_currency_in_notes(self):
+        text = " ".join(self.record["notes"])
+        for word in FORBIDDEN:
+            self.assertNotIn(word, text.replace("Europe", ""))
+        self.assertIn("reconstructed", text)
+        self.assertIn("illustrative tariff units", text)
+
+
 if __name__ == "__main__":
     unittest.main()

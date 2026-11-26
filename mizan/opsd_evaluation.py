@@ -7,15 +7,16 @@ forecaster is injected, so this module and its tests stay torch-free.
 import copy
 import json
 from collections import Counter
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
 
 from .core.contract import Refused, require
 from .evaluation import realized
-from .hf_evaluation import (CHRONOS_LEVELS, PLANNED_AS, POLICIES_HF, SHARED_LEVELS, _columns, _compare, _decision_summary,
-                            _MISSING, _within, chronos_context, rasid_gate)
+from . import opsd
+from .hf_evaluation import (CHRONOS_LEVELS, PLANNED_AS, POLICIES_HF, SCENARIO_RULE, SHARED_LEVELS, _columns, _compare,
+                            _decision_summary, _MISSING, _within, chronos_context, rasid_gate)
 from .opsd import PROTOCOL
 from .rasid.forecast import forecast, quantile_scores, records
 from .rasid.input import checked
@@ -112,10 +113,11 @@ def share_interval(rows, policy, run_lengths, *, draws=DRAWS, seed=SEED, idx=Non
     return {"value": _share(costs), "ci95": _interval(_share_draws(costs, idx)), "bootstrap": _describe(len(idx), seed)}
 
 
-def pooled(per_site: dict, *, draws=DRAWS, seed=SEED, point=None, stat=None) -> dict:
+def pooled(per_site: dict, *, draws=DRAWS, seed=SEED, point=None, stat=None, idx_by_site=None) -> dict:
     """The equal-weight mean over sites of a unit-free statistic. Each site is resampled independently (seed + its
-    index in sorted site order). By default the statistic is the mean of the site's per-day values; `point(values)`
-    and `stat(values, idx)` replace it (for a share, values are the per-day cost columns)."""
+    index in sorted site order; `idx_by_site` passes those draws in when they are already made). By default the
+    statistic is the mean of the site's per-day values; `point(values)` and `stat(values, idx)` replace it (for a
+    share, values are the per-day cost columns)."""
     point = point or (lambda v: float(np.mean(v)))
     stat = stat or (lambda v, idx: v[idx].mean(axis=1))
     points, curves = [], []
@@ -123,7 +125,8 @@ def pooled(per_site: dict, *, draws=DRAWS, seed=SEED, point=None, stat=None) -> 
         values, runs = per_site[site]
         values = np.asarray(values, dtype=np.float64)
         require(len(values) > 0, "OPSD_NO_DAYS", f"{site} has no target days")
-        idx = block_draws(len(values), runs, draws=draws, seed=seed + i)
+        idx = (idx_by_site or {}).get(site)
+        idx = block_draws(len(values), runs, draws=draws, seed=seed + i) if idx is None else idx
         points.append(point(values))
         curves.append(stat(values, idx))
     lo, hi = _interval(np.mean(curves, axis=0))
@@ -295,3 +298,112 @@ def generated_gate(forecaster) -> dict:
                         grid_at=lambda o: [o + timedelta(hours=h) for h in range(24)], month_of=lambda o: (o.year, o.month))
     require(not planned["ridge_refused"] and not planned["planning_refused"], "GATE", "The generated site must plan every day")
     return gate_check(summarize(planned["rows"]), shipped_ridge, shipped_hf)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The evidence record (spec rules 9 and 10)
+
+COMPARISONS = [tuple(c) for c in PROTOCOL["comparisons"]["cost"]]
+ACCURACY = [tuple(c) for c in PROTOCOL["comparisons"]["accuracy"]]
+QUICK = {"days_per_site": 10, "draws": 50}
+NOTES = [
+    opsd.ATTRIBUTION,
+    "Real public measurements, not MIZAN's own data. The load of each site is reconstructed as grid import plus solar; "
+    "the no-export gate checks that neither site ever exported.",
+    "Costs are in RASID's illustrative tariff units, scaled to each site's size; no currency follows from them. The "
+    "battery is hypothetical: neither site has one in this data.",
+    "Intervals come from a moving-block bootstrap of 7 target days whose blocks never span a gap between runs; many "
+    "intervals are reported and none is adjusted for multiple comparisons.",
+    "Pooled results are unit-free and weight each site equally: cost differences divided by the site's mean daily "
+    "no-battery cost, accuracy differences by the site's mean load, both held fixed over all target days.",
+]
+
+
+def _site_inputs(path, site):
+    hours = opsd.hourly(path, site)
+    clean = opsd.clean_days(hours)
+    return hours, clean, opsd.export_gate(hours, clean)
+
+
+def _plans(rows, refused):
+    out = {}
+    for k in POLICIES_HF:
+        causes = Counter(r["cause"] for r in refused if r["policy"] == k)
+        out[k] = {"kept_days": len(rows), "verified_feasible": sum(r[k + "_status"] == "VERIFIED_FEASIBLE" for r in rows),
+                  "rejected": causes.get("PLAN_REJECTED", 0), "no_plan": causes.get("NO_INCUMBENT", 0),
+                  "other_refusals": sum(n for c, n in causes.items() if c not in ("PLAN_REJECTED", "NO_INCUMBENT"))}
+    return out
+
+
+def evaluate_opsd(path: Path, forecaster, *, quick=False) -> dict:
+    """Both sites under the sealed protocol, with the forecaster injected (models.chronos_forecaster in a real run).
+    Every site's no-export gate runs before anything is forecast; a failure stops the run (OPSD_EXPORT)."""
+    from zoneinfo import ZoneInfo
+    zone = ZoneInfo(opsd.ZONE)
+    draws = QUICK["draws"] if quick else DRAWS
+    inputs = {site: _site_inputs(path, site) for site in opsd.SITES}
+    for site, (_, _, gate) in inputs.items():
+        require(gate["passed"], "OPSD_EXPORT", f"{site}: {gate['low_import_hours']} sunny hours with near-zero import; "
+                                               "load = import + solar would not hold")
+    sites, idx_by_site = {}, {}
+    for i, site in enumerate(sorted(inputs)):
+        hours, clean, gate = inputs[site]
+        candidates = opsd.target_candidates(clean)
+        if quick:
+            candidates = candidates[:QUICK["days_per_site"]]
+        base = opsd.site_base(hours, clean)
+        origins = [[opsd.local_day_hours(d)[0] for d in run] for run in opsd.runs(candidates)]
+        planned = plan_days(origins, lambda o: opsd.history_rows(hours, clean, o),
+                            lambda t: (hours[t][0] + hours[t][1], hours[t][1]), base["settings"], forecaster,
+                            grid_at=lambda o: opsd.local_day_hours(o.astimezone(zone).date()),
+                            month_of=lambda o: (o.astimezone(zone).year, o.astimezone(zone).month),
+                            date_of=lambda o: o.astimezone(zone).date().isoformat())
+        rows, runs = planned["rows"], planned["run_lengths"]
+        require(rows, "OPSD_NO_DAYS", f"{site}: no target day was planned")
+        idx = block_draws(len(rows), runs, draws=draws, seed=SEED + i)
+        idx_by_site[site] = idx
+        summary = summarize(rows)
+        mean_load = float(np.mean([hours[t][0] + hours[t][1] for r in rows for t in opsd.local_day_hours(date.fromisoformat(r["date"]))]))
+        twenty_four = [d for d, ts in clean.items() if len(ts) == 24]
+        sites[site] = {
+            "building": opsd.BUILDINGS[site],
+            "base": {"scale": base["scale"], "limit_kw": base["limit_kw"],
+                     "battery": {k: base["settings"]["assets"][k] for k in ("capacity", "power", "initial", "terminal")}},
+            "counts": {"clean_days": len(clean), "clean_24_hour_days": len(twenty_four),
+                       "daylight_saving_excluded": len(clean) - len(twenty_four),
+                       "lookback_excluded": len(twenty_four) - len(opsd.target_candidates(clean)),
+                       "candidates": len(opsd.target_candidates(clean)), "evaluated_candidates": len(candidates),
+                       "ridge_refused": planned["ridge_refused"], "planning_refused": planned["planning_refused"],
+                       "target_days": len(rows), "runs": len(runs)},
+            "export_gate": gate,
+            "forecast": {**summary["forecast"], "mean_load_kw": mean_load,
+                         "ridge_mae_share_of_load": summary["forecast"]["ridge_mae_kw"] / mean_load,
+                         "seasonal_naive_mae_share_of_load": summary["forecast"]["seasonal_naive_mae_kw"] / mean_load,
+                         "chronos_mae_share_of_load": summary["forecast"]["chronos_mae_kw"] / mean_load},
+            "decision_quality": summary["decision_quality"],
+            "share": {k: share_interval(rows, k, runs, idx=idx) for k in POLICIES_HF},
+            "paired": [{"a": a, "b": b, **paired([r[a + "_cost"] - r[b + "_cost"] for r in rows], runs, idx=idx)}
+                       for a, b in COMPARISONS],
+            "accuracy": [{"a": a, "b": b, **paired([r[a] - r[b] for r in rows], runs, idx=idx)} for a, b in ACCURACY],
+            "plans": _plans(rows, planned["planning_refused"]),
+            "run_lengths": runs,
+            "rows": rows,
+        }
+    norm = {site: {"mean_daily_no_battery_cost": float(np.mean([r["no_battery_cost"] for r in s["rows"]])),
+                   "mean_load_kw": s["forecast"]["mean_load_kw"]} for site, s in sites.items()}
+    common = {"draws": draws, "idx_by_site": idx_by_site}
+    pooled_out = {
+        "share": {k: pooled({site: (_costs(s["rows"], k), s["run_lengths"]) for site, s in sites.items()},
+                            point=_share, stat=_share_draws, **common) for k in POLICIES_HF},
+        "paired": [{"a": a, "b": b, "unit": "share of the site's mean daily no-battery cost",
+                    **pooled({site: (np.array([r[a + "_cost"] - r[b + "_cost"] for r in s["rows"]])
+                                     / norm[site]["mean_daily_no_battery_cost"], s["run_lengths"]) for site, s in sites.items()},
+                             **common)} for a, b in COMPARISONS],
+        "accuracy": [{"a": a, "b": b, "unit": "share of the site's mean load",
+                      **pooled({site: (np.array([r[a] - r[b] for r in s["rows"]]) / norm[site]["mean_load_kw"], s["run_lengths"])
+                                for site, s in sites.items()}, **common)} for a, b in ACCURACY],
+        "normalisers": norm,
+    }
+    return {"identity": {"file_sha256": opsd.FILE_SHA256, "url": opsd.URL, "version": opsd.VERSION},
+            "settings": PROTOCOL, "quick": QUICK if quick else False, "notes": NOTES, "sites": sites, "pooled": pooled_out,
+            "scenario_rule": SCENARIO_RULE}
