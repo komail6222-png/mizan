@@ -1,6 +1,22 @@
 # Changelog
 
-All notable changes to MIZAN. Detailed notes and evidence for each release are in `docs/`. Releases up to 3.0.0 are dated 21 November 2026; 3.1.0 is dated 25 November 2026.
+All notable changes to MIZAN. Detailed notes and evidence for each release are in `docs/`. Releases up to 3.0.0 are dated 21 November 2026; 3.1.0 is dated 25 November 2026; 3.2.0 is not yet released.
+
+## [3.2.0] - unreleased
+
+BASIRA on real images: the unchanged engine evaluated on the public VisA dataset under a sealed protocol. Details: [`docs/RELEASE_3.2.md`](docs/RELEASE_3.2.md).
+
+### Added
+- **BASIRA on VisA** (`mizan/visa.py`, `mizan/visa_evaluation.py`, `scripts/evaluate_visa.py`, results in `reports/visa/`). VisA (Zou et al., 2022, CC BY 4.0) gives 12 real product types, each treated as one customer's product line: 962 normal and 1,200 defective test images from the official split. The protocol (`mizan.visa.PROTOCOL`) was sealed in commit `13827ee6` before any test image was scored; a real run refuses a changed protocol. A fidelity gate first reproduced the shipped descriptor's frozen test exactly (323 checks) and DINOv2-small's 3.1 frozen test bit for bit (404 checks), and the whole run repeated identically in a second Python process. Every exact exchangeability check (9 pooled, 27 by type) reads consistent with the calibration promise. At the 5% target with the full bank (30 reference, 100 calibration parts), the shipped descriptor catches 26.8% of defective images (95% interval 24.3% to 29.4%) with 5.6% false alerts (4.2% to 7.3%); DINOv2-small catches 36.3% on the engine's greyscale input and 38.6% (35.8% to 41.4%) at native colour input, off the engine path. Each step is a resolved paired gain in detection and AUROC (mean AUROC 0.717, 0.799, 0.831); neither false-alert difference is resolved. Every run that scores VisA images is logged in `reports/visa/runs.json`.
+- `scripts/fetch_visa.py` downloads the archive in 16 resumable byte ranges and the split at its pinned commit into the git-ignored `var/visa/`, and verifies all 10,821 images against `reports/visa/manifest.json`. The dataset is not redistributed.
+- Results pages `reports/visa/index.html` and `reports/visa/classes.html` (`scripts/build_visa_report.py`), served at `report/visa/` and linked from the evaluation report; `scripts/check_exhibits.py` checks them in Chromium.
+- The introduction gains a bilingual "Real images: BASIRA on VisA" block whose figures `scripts/build_site.py` reads from `reports/visa/basira.json` and whose wording it checks against the record before building.
+- `docs/DATA_LICENSES.md`: the VisA attribution, source, licence and the changes made to the images.
+- Tests: `test_visa.py`, `test_visa_evaluation.py`, and new cases in `test_evaluation.py` and `test_site.py` (222 tests in total). The suite reads no VisA image: it uses a generated two-class stand-in tree.
+- Browser checks cover the two VisA pages and the introduction's new block: 0 failures in 8,972 text-element contrast checks (`reports/browser-checks.json`).
+
+### Changed
+- The README, the introduction and its limits no longer say that all data is generated: VisA is named as the one real dataset, with its attribution, and as no production line's certificate.
 
 ## [3.1.0] - 2026-11-25
 

@@ -15,7 +15,7 @@ mizan doctor                      # reports SQLite; follow the README section if
 ## Commands
 
 ```bash
-python -m unittest discover -s tests -v                       # 172 tests (4 HF loader tests skip without torch)
+python -m unittest discover -s tests -v                       # 222 tests (4 HF loader tests skip without torch)
 python -m mizan run sanad examples/sanad.json --out /tmp/sanad.json
 python -m mizan verify /tmp/sanad.json
 python -m mizan explain /tmp/sanad.json --lang ar
@@ -25,6 +25,8 @@ node scripts/check_exhibit_logic.mjs
 python scripts/check_exhibits.py --chromium PATH --out /tmp/browser.json
 python scripts/build_site.py                                   # GitHub Pages site into _site/
 python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat  # in .venv-hf only; rewrites the published HF evidence
+python scripts/fetch_visa.py --out var/visa                     # VisA (CC BY 4.0), verified against reports/visa/manifest.json
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv-hf/bin/python scripts/evaluate_visa.py --data var/visa --models var/hf --out /tmp/visa --repeat --seal 13827ee6b1d5105c191eff3e9658d67f1ca44e62 --reason check  # ~76 min; logs to reports/visa/runs.json
 ```
 
 ## Layout

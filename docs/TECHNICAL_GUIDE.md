@@ -165,6 +165,36 @@ Resources, measured on the recording machine (Intel Core i7-13645HX, WSL2 with 7
 
 `reports/hf` holds the published evidence. `--out` is required, and `reports/hf` is written only with `--repeat`, by the canonical command `python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat`; write anywhere else to check or experiment. After a new evidence run, also run `python scripts/derive_hf_intervals.py` (torch-free): `reports/hf/rasid_intervals.json` is derived from `rasid.json`, and a test requires the two to agree.
 
+## BASIRA on real images (`reports/visa/`)
+
+The unchanged BASIRA engine on the public VisA dataset (CC BY 4.0, real images, attribution in `docs/DATA_LICENSES.md`), under a protocol sealed before any test image was scored. Results and disclosures: `docs/RELEASE_3.2.md`. The dataset is not in the repository. Fetch it into the git-ignored `var/visa/` (torch-free, `.venv`):
+
+```bash
+python scripts/fetch_visa.py --out var/visa
+```
+
+This downloads the archive (1,929,840,640 bytes) in 16 parallel byte ranges, which resume from their `.partNN` files after an interruption. It also downloads the official split at its pinned commit, checks both SHA-256 values, extracts the images and verifies every one against `reports/visa/manifest.json`. On disk (`du -sh`): the archive takes 1.8 GiB and the extracted images 1.9 GiB.
+
+The evaluation needs the DINOv2 pin imported into `var/hf` (`.venv-hf/bin/python -m mizan hf fetch basira`, see above). Run it into a scratch directory with its repeat run, then compare with the published record:
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MIZAN_HF_MODELS=var/hf .venv-hf/bin/python scripts/evaluate_visa.py \
+    --data var/visa --models var/hf --out /tmp/visa --repeat \
+    --seal 13827ee6b1d5105c191eff3e9658d67f1ca44e62 --reason "reproduction"
+diff <(python -m json.tool reports/visa/basira.json) <(python -m json.tool /tmp/visa/basira.json)
+```
+
+- **Before any image is scored**, a real run does three things. It checks that `mizan.visa.PROTOCOL` still has its sealed digest and that `--seal` names the commit that sealed it. It verifies every image against the manifest. It runs the fidelity gate: the shipped descriptor must reproduce the frozen test of `reports/evaluation/basira.json` exactly, and DINOv2 must reproduce 3.1's frozen test of `reports/hf/basira.json`. A failed gate exits with code 2 and writes nothing.
+- **Fields that differ on another machine by design:** `elapsed_seconds`, `environment`, `repeat_run` (its process note), `provenance` (the commit and tree state the run started from) and `identity.dinov2.manifest_sha256` (that machine's own signed import).
+- **Every run that scores VisA images is appended to `reports/visa/runs.json`, a check run included**, so the log shows each time test images were scored. `--dry-run` scores train normals only, for timing and memory, and writes no evidence.
+- **The published command** is the same with `--out reports/visa`. That directory is written only with `--repeat`. A changed protocol is a new, separately labelled analysis, not a rerun.
+- **After a new evidence run,** rebuild the pages with `python scripts/build_visa_report.py`, `python scripts/build_report.py` and `python scripts/build_site.py`.
+
+Resources, measured on the recording machine (Intel Core i7-13645HX, WSL2 with 7 GiB of memory, CPU only):
+
+- **The real run** with its repeat in a second process took 4,562.9 s (76 minutes) and peaked at 594.6 MiB resident memory (`reports/visa/runs.json`).
+- **The dry run** scored the 8,659 train normals once per scorer in 1,825.1 s: the descriptor 114.4 s, DINOv2-small on the engine input 783.2 s, at native input 840.8 s.
+
 ## Recovery and qualification
 
 Use `python -m mizan backup BACKUP_DIR` and `python -m mizan restore BACKUP_DIR NEW_DATA_DIR` offline against the intended store. Backups contain the database and referenced blobs. Retain the operator's existing trust root separately for recovery. Restore verifies the signature, database and referenced objects and creates a new generation. It checks current or explicitly supplied trusted heads. Restoring an older snapshot after further activity requires separate history reconciliation.
