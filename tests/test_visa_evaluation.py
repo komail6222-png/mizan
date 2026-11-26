@@ -350,6 +350,27 @@ class RunnerTests(unittest.TestCase):
         for entry in log:
             self.assertTrue({"commit", "date", "dry_run", "reason", "protocol_digest", "peak_rss_mib"} <= set(entry))
 
+    def test_log_records_the_tree_state_taken_at_the_start(self):
+        from unittest import mock
+        import scripts.evaluate_visa as ev
+        states = iter([{"commit": "c0ffee", "dirty": False}, {"commit": "later", "dirty": True}])
+        with mock.patch.object(ev, "_git_state", side_effect=lambda: next(states)) as state:
+            self.run_visa(dry_run=True)
+        self.assertEqual(state.call_count, 1)
+        entry = json.loads(self.log.read_text(encoding="utf-8"))[-1]
+        self.assertEqual((entry["commit"], entry["dirty"]), ("c0ffee", False))
+
+    def test_tree_state_ignores_untracked_outputs(self):
+        from unittest import mock
+        import scripts.evaluate_visa as ev
+        calls = []
+        def git(*args):
+            calls.append(args)
+            return "abc" if args[0] == "rev-parse" else ""
+        with mock.patch.object(ev, "_git", git):
+            self.assertEqual(ev._git_state(), {"commit": "abc", "dirty": False})
+        self.assertIn(("status", "--porcelain", "--untracked-files=no"), calls)
+
     def test_real_run_writes_a_gated_repeated_record(self):
         from unittest import mock
         from mizan import visa_evaluation as ve

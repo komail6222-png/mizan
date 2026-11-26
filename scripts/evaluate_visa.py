@@ -40,7 +40,7 @@ EVIDENCE_DIR = ROOT / "reports" / "visa"
 MANIFEST = EVIDENCE_DIR / "manifest.json"
 RUN_LOG = EVIDENCE_DIR / "runs.json"
 HF_SHIPPED = ROOT / "reports" / "hf" / "basira.json"
-VOLATILE = ("elapsed_seconds", "environment", "repeat_run")
+VOLATILE = ("elapsed_seconds", "environment", "repeat_run", "provenance")
 
 
 def default_loaders(models_root):
@@ -87,8 +87,13 @@ def _append_log(log, entry):
     os.replace(name, log)
 
 
-def _log_entry(*, dry_run, reason, seal, out, started, extra=None):
-    return {"commit": _git("rev-parse", "HEAD"), "dirty": bool(_git("status", "--porcelain")),
+def _git_state():
+    """The code a run starts from: HEAD and whether any tracked file differs from it (outputs are untracked)."""
+    return {"commit": _git("rev-parse", "HEAD"), "dirty": bool(_git("status", "--porcelain", "--untracked-files=no"))}
+
+
+def _log_entry(*, state, dry_run, reason, seal, out, started, extra=None):
+    return {"commit": state["commit"], "dirty": state["dirty"],
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "dry_run": dry_run, "reason": reason,
             "protocol_digest": digest(visa.PROTOCOL), "seal_commit": seal,
             "evidence_dir": Path(out).resolve() == EVIDENCE_DIR.resolve(),
@@ -157,6 +162,7 @@ def _second_process(data, models_root, seal, manifest_path, quick):
 def run(data, out, *, models_root, reason, repeat=False, dry_run=False, seal=None, loaders=None, quick=False,
         log=RUN_LOG, manifest_path=MANIFEST, child=False):
     started = time.perf_counter()
+    state = _git_state()
     say = lambda s: print(s, flush=True)  # noqa: E731
     require(repeat or child or Path(out).resolve() != EVIDENCE_DIR.resolve(), "EVIDENCE_OUT",
             f"{EVIDENCE_DIR} holds the published evidence: write it only with --repeat, or choose another --out")
@@ -176,7 +182,7 @@ def run(data, out, *, models_root, reason, repeat=False, dry_run=False, seal=Non
         timings = _dry_run(root, train_only, scorers, quick, say)
         say(json.dumps(timings))
         if not child:
-            _append_log(log, _log_entry(dry_run=True, reason=reason, seal=seal, out=out, started=started, extra=timings))
+            _append_log(log, _log_entry(state=state, dry_run=True, reason=reason, seal=seal, out=out, started=started, extra=timings))
         return {"dry_run": True, **timings}
 
     gate = _gates(scorers, say)
@@ -189,11 +195,12 @@ def run(data, out, *, models_root, reason, repeat=False, dry_run=False, seal=Non
         diff = differences(_compared(record), _compared(second))
         record["repeat_run"] = {"identical": not diff, "process": process, "differing_values": len(diff), "differences": diff[:50]}
     record["environment"] = {**environment(), "peak_rss_mib": _peak_rss_mib()}
+    record["provenance"] = {**state, "note": "HEAD and tracked-file state when the run started"}
     record["elapsed_seconds"] = round(time.perf_counter() - started, 1)
     paths = _write(out, {"basira": record})
     say(f"wrote {', '.join(str(p) for p in paths)}")
     if not child:
-        _append_log(log, _log_entry(dry_run=False, reason=reason, seal=seal, out=out, started=started,
+        _append_log(log, _log_entry(state=state, dry_run=False, reason=reason, seal=seal, out=out, started=started,
                                     extra={"repeat_identical": record.get("repeat_run", {}).get("identical")}))
     return record
 
