@@ -1,5 +1,6 @@
 import contextlib
 import csv
+import http.server
 import io
 import json
 import tarfile
@@ -126,6 +127,87 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(Refused) as cm:
             protocol_split(self.root, self.manifest, "candle")   # 6 train normals cannot hold 30 + 100
         self.assertEqual(cm.exception.code, "VISA_SPLIT_SIZE")
+
+
+class _Blob(http.server.BaseHTTPRequestHandler):
+    """Serves one byte string with HEAD, Accept-Ranges and 206 partial responses, counting the bytes it sends."""
+    blob = b""
+    sent = 0
+
+    def log_message(self, *args):
+        pass
+
+    def _range(self):
+        spec = self.headers.get("Range")
+        if not spec:
+            return 0, len(self.blob) - 1, False
+        start, end = spec.removeprefix("bytes=").split("-")
+        return int(start), min(int(end) if end else len(self.blob) - 1, len(self.blob) - 1), True
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(len(self.blob)))
+        self.end_headers()
+
+    def do_GET(self):
+        start, end, partial = self._range()
+        body = self.blob[start:end + 1]
+        self.send_response(206 if partial else 200)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(len(body)))
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{len(self.blob)}")
+        self.end_headers()
+        self.wfile.write(body)
+        type(self).sent += len(body)
+
+
+class RangedDownloadTests(unittest.TestCase):
+    def setUp(self):
+        import hashlib
+        import os
+        import threading
+        self.tmp = tempfile.TemporaryDirectory()
+        self.blob = os.urandom(1_000_003)
+        self.sha = hashlib.sha256(self.blob).hexdigest()
+        handler = type("Handler", (_Blob,), {"blob": self.blob, "sent": 0})
+        self.handler = handler
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/VisA_test.tar"
+        self.dest = Path(self.tmp.name) / "VisA_test.tar"
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.tmp.cleanup()
+
+    def download(self, **kw):
+        from scripts.fetch_visa import download
+        with contextlib.redirect_stdout(io.StringIO()):
+            return download(self.url, self.dest, len(self.blob), chunks=4, **kw)
+
+    def test_ranged_download_assembles_identical_bytes(self):
+        self.assertEqual(self.download(), self.sha)
+        self.assertEqual(self.dest.read_bytes(), self.blob)
+        self.assertEqual(sorted(p.name for p in self.dest.parent.iterdir()), [self.dest.name])
+
+    def test_ranged_download_resumes_existing_chunks(self):
+        size = -(-len(self.blob) // 4)
+        part = self.dest.with_name(self.dest.name + ".part01")
+        part.write_bytes(self.blob[size:size + size // 2])   # half of the second chunk arrived before an interruption
+        self.assertEqual(self.download(), self.sha)
+        self.assertEqual(self.dest.read_bytes(), self.blob)
+        self.assertEqual(self.handler.sent, len(self.blob) - size // 2)
+
+    def test_size_mismatch_is_refused_before_anything_is_written(self):
+        from scripts.fetch_visa import download
+        with self.assertRaises(Refused) as cm, contextlib.redirect_stdout(io.StringIO()):
+            download(self.url, self.dest, len(self.blob) + 1, chunks=4)
+        self.assertEqual(cm.exception.code, "VISA_DOWNLOAD")
+        self.assertEqual(list(self.dest.parent.iterdir()), [])
+        self.assertEqual(self.handler.sent, 0)
 
 
 class FetchTests(unittest.TestCase):
