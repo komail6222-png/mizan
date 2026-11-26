@@ -229,6 +229,12 @@ MODELS_LINK = r"""<section id="models-link">
 </section>
 """
 
+OPSD_LINK = r"""<section id="opsd-link">
+<h2>RASID on real load</h2>
+<p class="lede">The battery planner, unchanged, on two real business sites from the public Open Power System Data household package (CC BY 4.0), with load reconstructed as grid import plus solar and a protocol sealed before any site day was forecast, has its own page: <a href="opsd/index.html">RASID on real load</a>.</p>
+</section>
+"""
+
 VISA_LINK = r"""<section id="visa-link">
 <h2>BASIRA on real images</h2>
 <p class="lede">The inspection engine, unchanged, on real products from the public VisA dataset (CC BY 4.0), with a protocol sealed before any test image was scored, has its own page: <a href="visa/index.html">BASIRA on real images</a>.</p>
@@ -471,7 +477,8 @@ def build(source, out, models_out=None, hf_source=None):
     models.html beside out), linked from the report. Returns out."""
     models = models_summary(source, hf_source)
     visa = (Path(source).parent / "visa" / "index.html").exists()   # scripts/build_visa_report.py, served at report/visa/
-    body = PAGE.replace("%%MODELS_LINK%%", (MODELS_LINK if models else "") + (VISA_LINK if visa else ""))
+    opsd = (Path(source).parent / "opsd" / "index.html").exists()   # scripts/build_opsd_report.py, served at report/opsd/
+    body = PAGE.replace("%%MODELS_LINK%%", (MODELS_LINK if models else "") + (VISA_LINK if visa else "") + (OPSD_LINK if opsd else ""))
     Path(out).write_text(_page(body, summarize(source), "MIZAN | Evaluation report", "What is MIZAN?", "https://komail6222-png.github.io/mizan/"), encoding="utf-8")
     if models:
         target = Path(models_out) if models_out else Path(out).with_name("models.html")
