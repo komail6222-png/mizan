@@ -405,3 +405,43 @@ class ReportOpsdLinkTests(unittest.TestCase):
         self.assertNotIn('id="opsd-link"', without)
         self.assertIn('id="opsd-link"', with_page)
         self.assertIn('href="opsd/index.html"', with_page)
+
+
+class OpsdPageReviewTests(unittest.TestCase):
+    """Fixes from the final review: pooled accuracy on the page, the copy check beside it, the tariff wording."""
+
+    def build(self, with_copies):
+        import json
+        import tempfile
+        from pathlib import Path
+        from scripts.build_opsd_report import build
+        from scripts.opsd_copy_check import sensitivity
+        d = Path(tempfile.mkdtemp())
+        record = _opsd_record()
+        (d / "rasid.json").write_text(json.dumps(record), encoding="utf-8")
+        if with_copies:
+            copies = sensitivity(record, {}, draws=50)
+            for s in copies["sites"]:
+                copies["sites"][s]["week_copies"] = {"target_days": 3 if s == "industrial1" else 0}
+            (d / "copies.json").write_text(json.dumps(copies), encoding="utf-8")
+        page = build(d, d)[0].read_text(encoding="utf-8")
+        import re
+        data = json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', page, re.S).group(1))
+        return record, page, data
+
+    def test_pooled_accuracy_is_on_the_page(self):
+        record, page, data = self.build(False)
+        self.assertIn('id="opsd-pooled-accuracy"', page)
+        self.assertEqual([p["reading"] for p in data["pooled"]["accuracy"]], [p["reading"] for p in record["pooled"]["accuracy"]])
+        self.assertIsNone(data["copies"])
+
+    def test_the_copy_check_travels_with_the_page(self):
+        record, page, data = self.build(True)
+        self.assertEqual(data["copies"]["target_days"], {"industrial1": 3, "industrial3": 0})
+        self.assertTrue(data["copies"]["same_readings"])
+
+    def test_only_the_battery_is_scaled(self):
+        record, page, data = self.build(False)
+        self.assertNotIn("scaled to each site's size", page)
+        self.assertIn("prices are RASID's illustrative tariff, unchanged", page)
+        self.assertNotIn("neither site ever exported", page)

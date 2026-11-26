@@ -218,10 +218,10 @@ diff <(python -m json.tool reports/opsd/rasid.json) <(python -m json.tool /tmp/o
 - **Fields that differ on another machine by design:** `elapsed_seconds`, `environment`, `repeat_run` (its process note), `provenance` and `identity.chronos.manifest_sha256`. Chronos quantiles computed on another CPU or library build may differ in their last bits, and so may the plans and costs derived from them.
 - **The run log:** every run that forecasts site days, a check run included, is appended to `reports/opsd/runs.json`. It writes a "started" entry before the first site day and a "finished" entry once its record is written. `--child` is internal: only `--repeat` starts it.
 - **The published command** is the same with `--out reports/opsd`, which is written only with `--repeat`.
-- **After a new evidence run,** rebuild the pages with `python scripts/build_opsd_report.py`, `python scripts/build_report.py` and `python scripts/build_site.py`.
+- **After a new evidence run,** run the separate copy check `python scripts/opsd_copy_check.py` (it writes `reports/opsd/copies.json` from the record and the data file), then rebuild the pages with `python scripts/build_opsd_report.py`, `python scripts/build_report.py` and `python scripts/build_site.py`.
 
 Resources, measured on the recording machine (Intel Core i7-13645HX, WSL2 with 7 GiB of memory, CPU only):
-- **The real run,** with its repeat in a second process, took 505.9 s and peaked at 607.2 MiB resident memory (`reports/opsd/runs.json`). The generated-site gate alone takes about 17 s.
+- **The real run,** with its repeat in a second process, took 505.9 s and peaked at 607.2 MiB resident memory (`reports/opsd/runs.json`).
 - **On disk,** the data file takes 15.7 MB.
 
 ## Recovery and qualification

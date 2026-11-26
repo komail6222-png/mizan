@@ -172,7 +172,7 @@ class HarnessTests(unittest.TestCase):
         rows = self.site.plan([origins])["rows"]
         march = [r for r in rows if r["date"] >= "2026-03-01"]
         self.assertTrue(all(march[0][k + "_start_peak"] == 0 for k in POLICIES_HF))
-        self.assertTrue(all(rows[1][k + "_start_peak"] > 0 for k in POLICIES_HF if k != "no_battery" or True))
+        self.assertTrue(all(rows[1][k + "_start_peak"] > 0 for k in POLICIES_HF))
         self.assertEqual(march[0]["candidate_start_charge"], rows[1]["candidate_start_charge"])   # the charge carries
         self.assertEqual(rows[0]["run"], march[0]["run"])
 
@@ -426,3 +426,23 @@ class RunnerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScaledProblemTests(unittest.TestCase):
+    def test_day_problem_takes_the_terminal_charge_from_the_site(self):
+        import copy
+        from mizan import examples
+        from mizan.opsd_evaluation import day_problem
+        from mizan.rasid.forecast import forecast, records
+        site = GeneratedSite()
+        origin = site.origins(0, 1)[0]
+        grid = [origin + site.td(hours=h) for h in range(24)]
+        f = forecast(records(site.raw), origin, grid, 4)
+        y = np.array([site.actual[t] for t in grid])
+        base = copy.deepcopy(examples.settings(24))
+        for k in ("capacity", "power", "initial", "terminal"):
+            base["assets"][k] *= 0.5
+        for name in ("candidate", "seasonal_naive", "perfect_foresight"):
+            with self.subTest(name):
+                p = day_problem(name, f, y, 15., 2., base)
+                self.assertEqual((p["assets"]["terminal"], p["assets"]["capacity"], p["assets"]["initial"]), (20., 40., 15.))

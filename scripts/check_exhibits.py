@@ -238,7 +238,8 @@ def check_opsd(browser, folder, screenshots=None):
     sites = sorted(record["sites"])
     want = {"#opsd-paired": [word[p["reading"]] for s in sites for p in record["sites"][s]["paired"]],
             "#opsd-accuracy-paired": [word[p["reading"]] for s in sites for p in record["sites"][s]["accuracy"]],
-            "#opsd-pooled": [word[p["reading"]] for p in record["pooled"]["paired"]]}
+            "#opsd-pooled": [word[p["reading"]] for p in record["pooled"]["paired"]],
+            "#opsd-pooled-accuracy": [word[p["reading"]] for p in record["pooled"]["accuracy"]]}
     path = Path(folder) / "index.html"
     results = []
     for width, height in [(1280, 900), (390, 844)]:

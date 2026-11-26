@@ -139,11 +139,11 @@ The recipe, timings, memory and disk use are in [`docs/TECHNICAL_GUIDE.md`](TECH
 
 ## Part 2 · RASID on real load (OPSD)
 
-Until now, every RASID figure came from a generated commercial site over 60 days, and 3.0 stated the limit: 60 generated days cannot settle whether the forecast is worth money. Part 2 runs RASID's unchanged forecaster, planner and independent verifier on two real business sites. It measures how well each policy plans, **without currency**: the owner chose this over euros, which would need a real tariff and a battery cost. All figures below are in `reports/opsd/rasid.json`; the run log is `reports/opsd/runs.json`.
+Until now, every RASID figure came from a generated commercial site over 60 days, and 3.0 stated the limit: 60 generated days cannot settle the forecast's value under RASID's illustrative tariff. Part 2 runs RASID's unchanged forecaster, planner and independent verifier on two real business sites. It measures how well each policy plans, **without currency**: the owner chose this over euros, which would need a real tariff and a battery cost. All figures below are in `reports/opsd/rasid.json`; the run log is `reports/opsd/runs.json`.
 
 **The answers, as they came out:**
 - **Planned and verified:** 811 real days were planned, and the independent verifier accepted every plan, 5,677 of 5,677.
-- **Forecasting:** on this real load, the shipped ridge forecaster is no better than a seasonal baseline that repeats last week's load; the difference is not resolved at either site. Chronos-Bolt-tiny, the 3.1 pin used zero-shot, cuts the error from 19.4% to 14.0% of mean load (both sites weighted equally), a resolved difference.
+- **Forecasting:** on this real load, the shipped ridge forecaster's error is not resolved from that of a seasonal baseline that repeats last week's load, at either site. Chronos-Bolt-tiny, the 3.1 pin used zero-shot, cuts the error from 19.4% to 14.0% of mean load (both sites weighted equally), a resolved difference.
 - **Planning:** planning on Chronos's quantiles without the risk weight captures 58.0% of the battery's achievable value (95% interval 56.3% to 61.1%). The shipped risk-aware ridge plan captures 24.9% (22.7% to 29.7%), and costs more than simply planning on the seasonal baseline, a resolved difference.
 
 The engine, its settings and the signed exhibit are unchanged.
@@ -168,7 +168,7 @@ Open Power System Data, *Data Package Household Data*, version 2020-04-15, CC BY
   The grid limit is set so it never binds. Prices, risk weight and efficiencies are unchanged, and time-of-use prices apply by local hour.
 - **Carried state:** each policy carries its charge and month-to-date peak. Both start afresh after any gap.
 - **Refusals:** a day where any policy's planner input is refused, no plan is found or a plan is rejected is dropped for every policy, and counted.
-- **Intervals:** a bootstrap of 7-day blocks that never span a gap (4,000 draws, seed 2026). Pooled results weight both sites equally and are unit-free.
+- **Intervals:** a bootstrap of 7-day blocks that never span a gap, with 4,000 draws. The seeds are 2026 for the warehouse and 2027 for the research building (seed plus site index); see Disclosures. Pooled results weight both sites equally and are unit-free.
 
 ### The fidelity gate
 
@@ -231,7 +231,10 @@ Paired daily cost differences, pooled as a share of each site's mean daily cost 
 
 Every comparison is resolved in the same direction at each site except one: ridge risk-neutral − seasonal baseline at the research building, +1.228 units a day (−0.304 to +2.317), is not resolved. The page `report/opsd/` lists every per-site figure.
 
-**What this says.** On real load the shipped ridge forecaster adds nothing over last week's load, and its plans capture less of the battery's value than plans built on that baseline. The risk weight costs more again, a resolved difference as in 3.0. Where 3.0's 60 generated days could not resolve the ridge forecast's economic value, these 811 real days do, and it is negative: risk-neutral plans on the ridge forecast cost more than plans on the seasonal baseline (both sites, +0.6% of the daily cost without a battery, 95% interval +0.3% to +0.7%). A pretrained forecaster changes the picture: Chronos is more accurate at both sites, and planning on its quantiles without the risk weight captures the most value of any policy. The deployed default is still the ridge forecaster with the risk weight. Changing it would be an operator's decision, a signed upgrade, and is not made here.
+**What this says.**
+- **The shipped forecaster:** on real load, the shipped ridge forecaster's error is not resolved from last week's load, and its plans capture less of the battery's value than plans built on that baseline. The risk weight costs more again, a resolved difference as in 3.0.
+- **The forecast's value:** 3.0's 60 generated days could not resolve the ridge forecast's value under the illustrative tariff. These real days resolve it for the warehouse and for both sites pooled, and it is negative: risk-neutral plans on the ridge forecast cost more than plans on the seasonal baseline (pooled +0.6% of the daily cost without a battery, 95% interval +0.3% to +0.7%). It is not resolved at the research building.
+- **A pretrained forecaster changes the picture:** Chronos is more accurate at both sites, and planning on its quantiles without the risk weight captures the most value of the six forecast-based policies. As in 3.1, the Chronos policies differ from the ridge ones in their scenario rule as well as in the forecaster. The deployed default is still the ridge forecaster with the risk weight. Changing it would be an operator's decision, a signed upgrade, and is not made here.
 
 ### Pages and site
 
@@ -242,14 +245,27 @@ Every comparison is resolved in the same direction at each site except one: ridg
 ### Disclosures
 
 - **The seal fixes the protocol, not the code.** The day loop, the statistics and the runner were finished after the seal (`72e51d50`) and before the one real run (from `a3f37c3a`).
-- **After the real run, no protocol, harness or runner code changed.** Only presentation changed. The page's "plans verified" first counted the 2 dropped Chronos days as planned; it now counts only plans made, and shows dropped days separately.
-- **What was inspected before the seal:** the target-day counts and the data checks above. They match the sealed run's own counts exactly (601 and 443 clean days, 547 and 276 candidates).
+- **After the real run, no protocol, harness or runner code changed.** Only presentation changed, and a separate check was added (below). The page's "plans verified" first counted the 2 dropped Chronos days as planned; it now counts only plans made, and shows dropped days separately.
+- **What was inspected before the seal:** the target-day counts and the data checks above. The clean-day and candidate counts match the sealed run's own exactly (601 and 443 clean days, 547 and 276 candidates). The design's pre-seal sunny-hour counts came from the earlier, one-hour-off alignment and differ from the sealed gate's.
+- **Copies of earlier weeks.** Rule 3 drops a day that copies the day before. The package also fills gaps with data from earlier days without always flagging them, and some clean days repeat the day 7 or 14 days earlier exactly, hour by hour.
+  - **Warehouse:** 80 clean days, 69 of them planned, 40 with solar identical too. On these days the seasonal baseline sees the actual load.
+  - **Research building:** 9 clean days, 4 planned.
+  - **A separate check without them:** `scripts/opsd_copy_check.py` removes these days from the sealed run's stored rows and splits runs where they are removed; plans and costs are as run, so this is not a re-planning. Its results are in `reports/opsd/copies.json`.
+    - The warehouse's baseline error rises from 6.383 to 7.016 kW, and ridge's from 6.414 to 6.875 kW.
+    - Pooled, ridge − baseline becomes −0.5 points of mean load (−1.7 to +0.4), still not resolved.
+    - The baseline's pooled share falls from 41.6% to 40.3%.
+    - **No reading of the sealed analysis changes.**
+  - **For a future protocol:** compare each day with the days one and two weeks earlier too.
+- **Bootstrap seeds.** Each site's draws use seed 2026 plus its index (2026 for the warehouse, 2027 for the research building), and the pooled draws reuse them. This was set before the run (ruling R12), but the sealed protocol text and the record's bootstrap labels say "seed 2026" for both sites.
+- **Sizing window.** The first 28 clean days that size each battery overlap the first planned days, so sizing is not strictly from before the evaluation. The effect is the same for every policy.
 
 ### Limits
 
 - **Two sites in one city, 2015–2017.** This is not evidence about businesses in general.
-- **The load is reconstructed** (grid import plus solar), justified by the no-export gate. Solar is about 3% of energy at both sites, so the battery's value comes from shifting load and cutting the monthly peak.
-- **The tariff is RASID's illustrative one,** scaled to each site, and the battery is hypothetical. No currency, bill or payback follows.
+- **The load is reconstructed** (grid import plus solar). The no-export check covers clean hours at hourly resolution: it found no sunny clean hour with near-zero import.
+- **The tariff is RASID's illustrative one,** unchanged. Only the battery is scaled to each site, and it is hypothetical. No currency, bill or payback follows.
+- **Within-run blocks.** Blocks never span a gap, so a run's first and last days fall in fewer blocks than its middle days. A percentile interval can therefore sit off its point estimate, more so at the research building, whose runs are short.
+- **Meter resolution.** Meters count in steps of a fraction of a kWh, so the rule against four identical hours can also drop a genuinely steady day.
 - **CPU only, Chronos-Bolt-tiny zero-shot,** with no tuning.
 - **Many intervals,** with no multiplicity adjustment. The share's intervals come from the same block bootstrap.
 

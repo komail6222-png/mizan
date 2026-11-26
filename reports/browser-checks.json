@@ -239,10 +239,10 @@
     ],
     "page_errors": 0,
     "external_requests": 0,
-    "fit_tables": 2,
-    "opsd_readings": 22,
+    "fit_tables": 1,
+    "opsd_readings": 24,
     "contrast": {
-      "text_elements": 688,
+      "text_elements": 726,
       "failures": 0,
       "disabled_exempt": 0,
       "color_schemes": [
@@ -261,10 +261,10 @@
     ],
     "page_errors": 0,
     "external_requests": 0,
-    "fit_tables": 2,
-    "opsd_readings": 22,
+    "fit_tables": 1,
+    "opsd_readings": 24,
     "contrast": {
-      "text_elements": 688,
+      "text_elements": 726,
       "failures": 0,
       "disabled_exempt": 0,
       "color_schemes": [

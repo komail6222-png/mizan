@@ -27,8 +27,8 @@ Open Power System Data. 2020. Data Package Household Data. Version 2020-04-15. h
 - **What this repository holds:** the file is not in this repository. `scripts/fetch_opsd.py` downloads it into the git-ignored `var/opsd/` and keeps it only when its size and SHA-256 match the values above. `reports/opsd/rasid.json` holds per-day results derived from two of its sites, `industrial1` (a warehouse) and `industrial3` (a research-institute building).
 - **Changes made:**
   - Hourly energies are differenced from the cumulative meter readings.
-  - Hours the package marks as interpolated, copied days and straight-line fills are excluded.
-  - Each site's load is reconstructed as grid import plus solar. A check in the data shows that neither site ever exported.
+  - Hours the package marks as interpolated, days that copy the day before and straight-line fills are excluded. Days that repeat the day one or two weeks earlier are not excluded by the sealed rule; they are counted, and checked separately, in `reports/opsd/copies.json`.
+  - Each site's load is reconstructed as grid import plus solar. The no-export check found no sunny clean hour with near-zero import.
 - **Status of the results:** they describe these two sites in 2015–2017 only, in RASID's illustrative tariff units. They are not MIZAN's own data, and no bill or currency follows from them.
 
 ## Typeface

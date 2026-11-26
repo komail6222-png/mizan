@@ -366,7 +366,7 @@ class RealLoadFactsTests(unittest.TestCase):
         f = build_site.opsd_facts(OPSD)
         self.assertEqual({k: v for k, v in self.figures.items() if k.startswith("opsd_")}, f)
         s, p = OPSD["sites"], OPSD["pooled"]
-        share = {a["a"] if "a" in a else None: a for a in p["accuracy"]}
+        accuracy = {a["a"]: a for a in p["accuracy"]}
         computed = {
             "opsd_sites": str(len(s)),
             "opsd_days": build_site.group(sum(x["counts"]["target_days"] for x in s.values())),
@@ -386,7 +386,16 @@ class RealLoadFactsTests(unittest.TestCase):
                          tuple(build_site.signed(v * 100, 1) for v in (gap["mean"], *gap["ci95"])))
         cand = next(c for c in p["paired"] if (c["a"], c["b"]) == ("candidate", "seasonal_naive"))
         self.assertEqual(f["opsd_cand_naive"], build_site.signed(cand["mean"] * 100, 1) + "%")
-        self.assertEqual(len(share), 2)
+        self.assertEqual(set(accuracy), {"ridge_mae", "chronos_mae"})
+
+    def test_ridge_against_the_baseline_names_its_direction_when_resolved(self):
+        path = ["pooled", "accuracy", 0]
+        for (lo, hi), en in [((-0.02, -0.01), "resolved, with ridge lower"), ((0.01, 0.02), "resolved, with ridge higher"),
+                             ((-0.01, 0.01), "not resolved")]:
+            with self.subTest(interval=(lo, hi)):
+                reading = "higher" if lo > 0 else "lower" if hi < 0 else "not resolved"
+                f = build_site.opsd_facts(opsd_changed((path + ["ci95"], [lo, hi]), (path + ["reading"], reading)))
+                self.assertEqual(f["opsd_ridge_naive_en"], en)
 
     def test_phrases_follow_the_interval(self):
         path = ["pooled", "paired", 0]
