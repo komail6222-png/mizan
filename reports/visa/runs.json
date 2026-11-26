@@ -1,0 +1,20 @@
+[
+ {
+  "commit": "c990e2f99ef1fd9ca19f03f4e4f165bc81d1aa6e",
+  "date": "2026-11-26T12:33:43Z",
+  "dirty": true,
+  "dry_run": true,
+  "elapsed_seconds": 1825.1,
+  "evidence_dir": false,
+  "peak_rss_mib": 588.1,
+  "protocol_digest": "2175caee24d3bd7102fb845560621cefd611f81a5ed9c11a6a6b5135370e705a",
+  "reason": "timing and memory, train normals only",
+  "seal_commit": null,
+  "seconds_per_scorer": {
+   "descriptor": 114.4,
+   "dinov2-engine": 783.2,
+   "dinov2-native": 840.8
+  },
+  "train_images_per_scorer": 8659
+ }
+]
