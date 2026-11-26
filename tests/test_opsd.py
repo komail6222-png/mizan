@@ -132,6 +132,29 @@ class DataRuleTests(unittest.TestCase):
                        for k in range(days)}
 
 
+class ProtocolTests(unittest.TestCase):
+    def test_protocol_digest_is_sealed(self):
+        from mizan import opsd
+        from mizan.core.contract import digest
+        self.assertEqual(digest(opsd.PROTOCOL), opsd.SEALED_DIGEST)
+
+    def test_protocol_carries_the_spec_values(self):
+        from mizan import hf_evaluation, opsd
+        v = opsd.PROTOCOL["values"]
+        self.assertEqual((v["lookback_days"], v["history_days"], v["chronos_context_hours"], v["sizing_days"]), (7, 300, 2048, 28))
+        self.assertEqual((v["sunny_fraction_of_p99_solar"], v["low_import_fraction_of_median_load"], v["limit_factor"]), (0.2, 0.02, 2.0))
+        self.assertEqual((v["block_days"], v["draws"], v["seed"], v["flat_run_hours"], v["rounding_digits"]), (7, 4000, 2026, 4, 6))
+        self.assertEqual(opsd.PROTOCOL["data"]["sha256"], "15956440b27465686eae2abf5895cbc3dab80f934a891bcb2f4f944428e97d60")
+        self.assertEqual(opsd.PROTOCOL["policies"], list(hf_evaluation.POLICIES_HF))
+        self.assertEqual(set(opsd.PROTOCOL["rules"]), {f"{i}_" + n for i, n in enumerate(
+            ["hourly_energy", "load", "clean_day", "no_export_gate", "target_day", "forecast_inputs", "battery_and_tariff",
+             "carried_state", "measures", "bootstrap_and_pooling", "readings", "refusals"], start=1)})
+        # The data rules read their values from the protocol, so a protocol change changes behaviour with the digest.
+        self.assertEqual((opsd.LOOKBACK_DAYS, opsd.SIZING_DAYS, opsd.FLAT_RUN, opsd.LIMIT_FACTOR), (7, 28, 4, 2.0))
+        for word in ("euro", "EUR", "€", "saving", "money"):
+            self.assertNotIn(word, str(opsd.PROTOCOL).replace("Europe", ""))
+
+
 class FetchTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
