@@ -35,6 +35,7 @@ import shutil
 import sys
 import tempfile
 from decimal import Decimal, ROUND_HALF_UP
+from fractions import Fraction
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +44,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from mizan.core.contract import Refused, strict_load  # noqa: E402
 from mizan.demos import exhibit_html  # noqa: E402
 from mizan.receipts import verify_exhibit  # noqa: E402
+from mizan.visa import SEALED_DIGEST  # noqa: E402
 from build_spaces import SPACES, build as build_spaces  # noqa: E402
 
 PINNED_KEY = "9a627609771982875b75b6b28ff59091f40c5a116df11c1fffb94f37a51df436"
@@ -54,6 +56,8 @@ COPIED = {
     "exhibit/index.html": "reports/demo/MIZAN_Demo.html",
     "report/index.html": "reports/evaluation/index.html",
     "report/models.html": "reports/evaluation/models.html",
+    "report/visa/index.html": "reports/visa/index.html",       # BASIRA on real images (scripts/build_visa_report.py)
+    "report/visa/classes.html": "reports/visa/classes.html",
     **{f"{kind}/index.html": f"spaces/{kind}/index.html" for kind in SPACES},
     "og.png": "site/og.png",
     "OFL-ReadexPro.txt": "mizan/web/fonts/OFL-ReadexPro.txt",  # the licence of the typeface every page embeds
@@ -217,6 +221,76 @@ def hf_facts(basira, rasid, sanad, intervals):
     }
 
 
+VISA = "reports/visa/basira.json"
+# The pooled false-alert count of the shipped descriptor, full configuration, against the exact range the
+# calibration promise implies (mizan.visa_evaluation.exchangeability).
+VISA_EXCH = {
+    "consistent": ("within the exact range the calibration promise implies", "ضمن المدى الدقيق الذي يقتضيه وعد المعايرة"),
+    "more": ("above the exact range the calibration promise implies", "أعلى من المدى الدقيق الذي يقتضيه وعد المعايرة"),
+    "fewer": ("below the exact range the calibration promise implies", "أدنى من المدى الدقيق الذي يقتضيه وعد المعايرة"),
+}
+
+
+def visa_facts(r):
+    """The Real images block, read from reports/visa/basira.json: BASIRA's unchanged engine on VisA (CC BY 4.0) under
+    the sealed protocol. The block's fixed wording is checked against the record; a statement that no longer holds
+    stops the build."""
+    if not (r["gate"]["passed"] and r["repeat_run"]["identical"] and r["quick"] is False):
+        fail(f"{VISA}: the block publishes only a full run whose gate passed and whose repeat run was identical")
+    if r["repeat_run"]["process"] != "a second Python process" or "note" in r["identity"]["dinov2"]:
+        fail(f"{VISA}: the block says the run, with the pinned models, repeated identically in a second process")
+    if not (r["seal_commit"] and r["protocol_digest"] == SEALED_DIGEST):
+        fail(f"{VISA}: the block says the run followed the protocol sealed before any test image was scored")
+    normals = sum(s["test_normal"] for s in r["splits"].values())
+    anomalies = sum(s["test_anomaly"] for s in r["splits"].values())
+    if any((p["false_alert"]["n"], p["detection"]["n"]) != (normals, anomalies) for rules in r["pooled"].values() for p in rules.values()):
+        fail(f"{VISA}: the block says every scorer was scored on the same official test images")
+    full = {s: rules["full"] for s, rules in r["pooled"].items()}
+    if not all(p["detection"]["rate"] < 0.5 for p in full.values()):
+        fail(f"{VISA}: the block says most defects pass at this false-alert level")
+    # Each step on the same images: DINOv2-small on the engine's input against the descriptor, then at native input.
+    paired = {c["comparison"]: c for c in r["paired"]}
+    for name in ("dinov2-engine - descriptor", "dinov2-native - dinov2-engine"):
+        c = paired[name]
+        if c["at"] != "full, marginal":
+            fail(f"{VISA}: the block states {name} at the full configuration, marginal rule")
+        for measure in ("detection", "auroc", "false_alert"):
+            lo, hi = c[measure]["ci95"]
+            if c[measure]["reading"] != ("higher" if lo > 0 else "lower" if hi < 0 else "not resolved"):
+                fail(f"{VISA}: {name} {measure} reads {c[measure]['reading']!r} for the interval {lo} to {hi}")
+        if not (c["detection"]["ci95"][0] > 0 and c["auroc"]["ci95"][0] > 0):
+            fail(f"{VISA}: the block says each step towards DINOv2 at native input catches more defects and ranks them better, a resolved difference")
+        lo, hi = c["false_alert"]["ci95"]
+        if not lo <= 0 <= hi:
+            fail(f"{VISA}: the block says neither step's false-alert differences are resolved")
+    e = r["exchangeability"]["descriptor"]["full"]["pooled"]
+    lo, hi = e["range95"]
+    if e["verdict"] not in VISA_EXCH or e["verdict"] != ("more" if e["observed"] > hi else "fewer" if e["observed"] < lo else "consistent"):
+        fail(f"{VISA}: the exchangeability verdict {e['verdict']!r} disagrees with its range {lo} to {hi}")
+    bank = r["settings"]["configurations"]["full"]
+
+    def rate(prefix, p):
+        return {prefix: percent(p["rate"]), prefix + "_lo": percent(p["ci95"][0]), prefix + "_hi": percent(p["ci95"][1])}
+
+    def auroc(prefix, a):
+        return {prefix: f"{a['mean']:.3f}", prefix + "_lo": f"{a['mean_ci95'][0]:.3f}", prefix + "_hi": f"{a['mean_ci95'][1]:.3f}"}
+    return {
+        "visa_classes": str(len(r["splits"])),
+        "visa_test_normals": group(normals),
+        "visa_test_anomalies": group(anomalies),
+        "visa_alpha": f"{float(Fraction(r['settings']['alpha']) * 100):g}%",
+        "visa_full_reference": str(bank["reference"]),
+        "visa_full_calibration": str(bank["calibration"]),
+        **rate("visa_desc_detect", full["descriptor"]["detection"]),
+        **rate("visa_desc_fa", full["descriptor"]["false_alert"]),
+        **rate("visa_native_detect", full["dinov2-native"]["detection"]),
+        "visa_exch_en": VISA_EXCH[e["verdict"]][0],
+        "visa_exch_ar": VISA_EXCH[e["verdict"]][1],
+        **auroc("visa_auroc_desc", r["auroc"]["descriptor"]),
+        **auroc("visa_auroc_native", r["auroc"]["dinov2-native"]),
+    }
+
+
 def recorded_tests(text):
     """The test counts the introduction states, from reports/application-tests.txt. It says that the main run passed,
     that every test it skipped is a Hugging Face loader test, that those passed in the optional environment, and that
@@ -279,6 +353,7 @@ def facts(packet):
         "premium": signed(premium["total_difference"]),
         "forecast_value": signed(forecast["total_difference"]),
         **hf_facts(*(load(f"reports/hf/{k}.json") for k in ("basira", "rasid", "sanad")), intervals),
+        **visa_facts(load(VISA)),
     }
 
 

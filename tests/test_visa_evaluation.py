@@ -1,0 +1,492 @@
+import json
+import os
+import unittest
+from fractions import Fraction
+from pathlib import Path
+
+import numpy as np
+from scipy import stats
+
+from mizan.basira import engine as b
+
+
+class StatisticsTests(unittest.TestCase):
+    def test_clopper_pearson_edges(self):
+        from mizan.visa_evaluation import clopper_pearson
+        lo, hi = clopper_pearson(0, 10)
+        self.assertEqual(lo, 0.0)
+        self.assertAlmostEqual(hi, 1 - 0.025 ** (1 / 10), places=12)
+        lo, hi = clopper_pearson(5, 5)
+        self.assertAlmostEqual(lo, 0.025 ** (1 / 5), places=12)
+        self.assertEqual(hi, 1.0)
+        lo, hi = clopper_pearson(3, 20)
+        self.assertLess(lo, 3 / 20)
+        self.assertGreater(hi, 3 / 20)
+
+    def test_rule_rank(self):
+        from mizan.visa_evaluation import rule_rank
+        self.assertEqual(rule_rank(24, "marginal"), 24)
+        self.assertEqual(rule_rank(100, "marginal"), 96)
+        self.assertEqual(rule_rank(100, "pac"), b.pac_rank(100, Fraction(1, 20), Fraction(1, 10)))
+
+    def test_exchangeability_one_class_equals_beta_binomial(self):
+        from mizan.visa_evaluation import exchangeability
+        n, m, k = 100, 100, 96
+        dist = stats.betabinom(n, m - k + 1, k)
+        r = exchangeability([(n, 7)], m, k)
+        self.assertEqual(r["observed"], 7)
+        self.assertAlmostEqual(r["expected_mean"], n * (m - k + 1) / (m + 1), places=12)
+        self.assertEqual(r["range95"], [int(dist.ppf(.025)), int(dist.ppf(.975))])
+        self.assertAlmostEqual(r["p_two_sided"], min(1.0, 2 * min(dist.cdf(7), dist.sf(6))), places=12)
+        self.assertEqual(r["verdict"], "consistent")
+        self.assertEqual(exchangeability([(n, 40)], m, k)["verdict"], "more")
+
+    def test_exchangeability_convolution_is_a_distribution(self):
+        from mizan.visa_evaluation import exchangeability
+        r = exchangeability([(100, 4), (50, 2)], 24, 24)
+        self.assertAlmostEqual(sum(r["pmf"]), 1.0, places=12)
+        self.assertEqual(len(r["pmf"]), 151)
+        self.assertEqual(r["observed"], 6)
+
+    def test_auroc_counts_ties_as_half(self):
+        from mizan.visa_evaluation import auroc
+        self.assertEqual(auroc([0, 1], [1, 2]), 0.875)
+        self.assertEqual(auroc([0, 1, 2], [5, 6]), 1.0)
+        self.assertEqual(auroc([5, 6], [0, 1, 2]), 0.0)
+
+    def test_auroc_interval_brackets_the_estimate(self):
+        from mizan.visa_evaluation import auroc, auroc_interval
+        rng = np.random.default_rng(1)
+        normal, anomaly = rng.normal(0, 1, 60), rng.normal(1, 1, 40)
+        lo, hi = auroc_interval(normal, anomaly)
+        self.assertLessEqual(lo, auroc(normal, anomaly))
+        self.assertGreaterEqual(hi, auroc(normal, anomaly))
+        self.assertEqual((lo, hi), auroc_interval(normal, anomaly))   # fixed seed
+
+    def test_paired_difference_readings(self):
+        from mizan.visa_evaluation import paired_difference
+        pooled = lambda strata: float(np.mean(np.concatenate([s["a"] for s in strata]))
+                                      - np.mean(np.concatenate([s["b"] for s in strata])))
+        same = [{"a": np.array([1, 0, 1, 1]), "b": np.array([1, 0, 1, 1])}, {"a": np.array([0, 1]), "b": np.array([0, 1])}]
+        r = paired_difference(same, pooled)
+        self.assertEqual(r["difference"], 0.0)
+        self.assertEqual(r["reading"], "not resolved")
+        shifted = [{"a": s["b"] + 1, "b": s["b"]} for s in same]
+        r = paired_difference(shifted, pooled)
+        self.assertAlmostEqual(r["difference"], 1.0, places=12)
+        self.assertAlmostEqual(r["ci95"][0], 1.0, places=12)
+        self.assertAlmostEqual(r["ci95"][1], 1.0, places=12)
+        self.assertEqual(r["reading"], "higher")
+        self.assertEqual(paired_difference([{"a": s["b"], "b": s["a"]} for s in shifted], pooled)["reading"], "lower")
+
+
+def _small_features(image):
+    """A stand-in feature grid (12 x 12 x 1) so harness tests run in milliseconds."""
+    return np.asarray(image.convert("L").resize((12, 12)), dtype=np.float64)[..., None] / 255
+
+
+class HarnessTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from mizan.visa import build_manifest, protocol_split, read_split
+        from tests.visa_fixture import make_visa_tree
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "data"
+        self.csv = make_visa_tree(self.root)
+        self.manifest = build_manifest(self.root, read_split(self.csv), "a" * 64, "b" * 64)
+        self.split = protocol_split(self.root, self.manifest, "candle", sizes=(2, 2))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def line(self, scorer, refuse=None):
+        from mizan.visa_evaluation import product_line
+        s = self.split
+        configs = {"small": {"reference": s["reference"][:1] + s["reference"][1:], "calibration": s["calibration"],
+                             "rules": ["marginal"]}}
+        tests = [(p, "normal") for p in s["test_normal"]] + [(p, "anomaly") for p in s["test_anomaly"]]
+        return product_line(self.root, configs, tests, scorer, refuse=refuse or {})
+
+    def test_fixture_gate_passes_with_shipped_descriptor(self):
+        from mizan.visa_evaluation import fixture_gate
+        gate = fixture_gate()
+        self.assertTrue(gate["passed"], gate["mismatches"][:3])
+        self.assertEqual(gate["mismatches"], [])
+        self.assertEqual(sum(name.startswith("row[") for name in gate["checked"]), 80 * 4)
+        self.assertIn("bank_digest", gate["checked"])
+
+    def test_fixture_gate_fails_when_one_p_value_differs(self):
+        from unittest import mock
+        from mizan.visa_evaluation import fixture_gate
+        original, calls = b.rank_decision, []
+        def altered(*args, **kwargs):
+            out = original(*args, **kwargs)
+            calls.append(1)
+            if len(calls) == 5:
+                out = {**out, "p_value": out["p_value"] + 1e-6}
+            return out
+        with mock.patch.object(b, "rank_decision", altered):
+            gate = fixture_gate()
+        self.assertFalse(gate["passed"])
+        self.assertTrue(any("row[4]" in m["name"] and "p_value" in m["name"] for m in gate["mismatches"]))
+
+    def test_dinov2_gate_tolerance(self):
+        from mizan.visa_evaluation import dinov2_gate
+        shipped = {"calibration_m": 24, "bank_digest": "x", "detected": 1, "false_alerts": 0,
+                   "rows": [{"seed": 1, "condition": "intact", "score": 1.0, "p_value": .5, "flag": False},
+                            {"seed": 2, "condition": "crack", "score": 2.0, "p_value": .04, "flag": True}]}
+        same = dinov2_gate(shipped, shipped)
+        self.assertTrue(same["passed"] and same["bit_exact"])
+        near = {**shipped, "bank_digest": "y", "rows": [{**shipped["rows"][0], "score": 1.0 * (1 + 1e-9)}, shipped["rows"][1]]}
+        close = dinov2_gate(near, shipped)
+        self.assertTrue(close["passed"])
+        self.assertFalse(close["bit_exact"])
+        flipped = {**shipped, "rows": [shipped["rows"][0], {**shipped["rows"][1], "flag": False}]}
+        self.assertFalse(dinov2_gate(flipped, shipped)["passed"])
+
+    def test_native_scorer_never_uses_engine_decode(self):
+        from unittest import mock
+        from mizan.visa_evaluation import Scorer
+        with mock.patch.object(b, "decode_image", side_effect=AssertionError("engine decode on the native path")) as spy:
+            line = self.line(Scorer("native-stub", _small_features, False, "test/native"))
+        self.assertEqual(spy.call_count, 0)
+        self.assertEqual(len(line["rows"]), 3)
+
+    def test_query_leak_is_refused_not_scored(self):
+        from mizan.visa_evaluation import Scorer, leaks
+        leak = self.root / self.split["test_normal"][0]
+        leak.write_bytes((self.root / self.split["reference"][0]).read_bytes())
+        refuse = leaks(self.root, self.split)
+        self.assertEqual(refuse, {self.split["test_normal"][0]: "QUERY_LEAK"})
+        line = self.line(Scorer("stub", _small_features, True, "test/engine"), refuse)
+        row = next(r for r in line["rows"] if r["path"] == self.split["test_normal"][0])
+        self.assertEqual(row["refused"], "QUERY_LEAK")
+        self.assertIsNone(row["scores"]["small"])
+        self.assertEqual(row["flags"]["small"], {})
+
+    def test_features_computed_once_per_image(self):
+        from mizan.visa_evaluation import Scorer, product_line
+        calls = []
+        def spy(image):
+            calls.append(1)
+            return _small_features(image)
+        s = self.split
+        configs = {"one": {"reference": s["reference"][:2], "calibration": s["calibration"][:1], "rules": ["marginal"]},
+                   "two": {"reference": s["reference"], "calibration": s["calibration"], "rules": ["marginal", "pac"]}}
+        tests = [(p, "normal") for p in s["test_normal"]] + [(p, "anomaly") for p in s["test_anomaly"]]
+        line = product_line(self.root, configs, tests, Scorer("stub", spy, True, "test/engine"))
+        fitted = sum(len(c["reference"]) + len(c["calibration"]) for c in configs.values())
+        self.assertEqual(len(calls), fitted + len(tests))
+        self.assertEqual(set(line["rows"][0]["scores"]), {"one", "two"})
+        self.assertEqual(set(line["rows"][0]["flags"]["two"]), {"marginal", "pac"})
+
+
+class RecordTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from mizan.visa import build_manifest, read_split
+        from tests.visa_fixture import make_visa_tree
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "data"
+        self.manifest = build_manifest(self.root, read_split(make_visa_tree(self.root)), "a" * 64, "b" * 64)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_study_caps_m_by_pool_and_notes_it(self):
+        from mizan.visa_evaluation import study
+        rng = np.random.default_rng(3)
+        r = study(rng.normal(size=30), rng.normal(size=40), rng.normal(2, 1, size=20), draws=10, sizes=(24, 50))
+        self.assertEqual([row["m"] for row in r["rows"]], [24])
+        self.assertEqual(r["capped"], [{"m": 50, "pool": 30}])
+        row = r["rows"][0]
+        self.assertEqual(row["draws"], 10)
+        self.assertAlmostEqual(row["theoretical_share_above_alpha"], float(b.exceedance(24, 24, Fraction(1, 20))), places=12)
+        self.assertTrue(0 <= row["mean_false_alert"] <= 1 and 0 <= row["mean_detection"] <= 1)
+
+    def test_examples_follow_the_rule(self):
+        from mizan.visa_evaluation import pick_examples
+        rows = {"pcb1": [{"path": f"p{i}", "label": "anomaly", "score": s, "flag": s > 5} for i, s in enumerate([9, 7, 6, 1, 2])],
+                "candle": [{"path": f"c{i}", "label": "normal", "score": s, "flag": False} for i, s in enumerate([3, 1, 2, 4])]}
+        picked = pick_examples(rows)
+        self.assertEqual(picked["caught"], {"class": "pcb1", "path": "p1", "score": 7})      # flagged 6, 7, 9: lower median 7
+        self.assertEqual(picked["missed"], {"class": "pcb1", "path": "p3", "score": 1})      # missed 1, 2: lower median 1
+        self.assertEqual(picked["passed"], {"class": "candle", "path": "c2", "score": 2})    # passed 1, 2, 3, 4: lower median 2
+        self.assertIsNone(picked["false_alert"])
+
+    def stub_scorers(self):
+        from mizan.visa_evaluation import Scorer
+        return [Scorer("descriptor", _small_features, True, "test/descriptor"),
+                Scorer("dinov2-engine", lambda im: _small_features(im) ** 2, True, "test/engine"),
+                Scorer("dinov2-native", lambda im: _small_features(im) + .01, False, "test/native")]
+
+    def test_record_shape_and_no_test_leak(self):
+        from mizan.visa import protocol_split
+        from mizan.visa_evaluation import evaluate_visa
+        r = evaluate_visa(self.root, self.manifest, self.stub_scorers(), quick=True)
+        for key in ("identity", "settings", "notes", "splits", "per_class", "pooled", "exchangeability", "auroc",
+                    "paired", "study", "examples", "rows"):
+            self.assertIn(key, r)
+        tests = [x["path"] for x in self.manifest["images"] if x["split"] == "test"]
+        self.assertEqual(sorted(row["path"] for row in r["rows"]), sorted(tests))
+        for cls in ("candle", "pcb1"):
+            s = protocol_split(self.root, self.manifest, cls, sizes=(2, 2))
+            fitted = set(s["reference"] + s["calibration"] + s["draw_pool"] + s["eval_pool"])
+            self.assertFalse(fitted & set(tests))
+        self.assertEqual(set(r["per_class"]), {"descriptor", "dinov2-engine", "dinov2-native"})
+        self.assertEqual(set(r["per_class"]["descriptor"]), {"as_shipped", "full", "full_pac"})
+        self.assertEqual({p["comparison"] for p in r["paired"]},
+                         {"dinov2-engine - descriptor", "dinov2-native - dinov2-engine"})
+        self.assertEqual(set(r["examples"]), {"caught", "missed", "false_alert", "passed"})
+        self.assertNotIn("pmf", json.dumps(r["exchangeability"]))
+
+    def test_pooled_rates_equal_sums_of_classes(self):
+        from mizan.visa_evaluation import evaluate_visa
+        r = evaluate_visa(self.root, self.manifest, self.stub_scorers(), quick=True)
+        for scorer, by_rule in r["per_class"].items():
+            for rule, by_class in by_rule.items():
+                for measure in ("false_alert", "detection"):
+                    pooled = r["pooled"][scorer][rule][measure]
+                    self.assertEqual(pooled["x"], sum(c[measure]["x"] for c in by_class.values()))
+                    self.assertEqual(pooled["n"], sum(c[measure]["n"] for c in by_class.values()))
+
+
+class RunnerTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from mizan.visa import build_manifest, read_split
+        from tests.visa_fixture import make_visa_tree
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.data = base / "visa"
+        root = self.data / "data" / "VisA"
+        manifest = build_manifest(root, read_split(make_visa_tree(root)), "a" * 64, "b" * 64)
+        self.manifest = base / "manifest.json"
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        self.tests = {x["path"] for x in manifest["images"] if x["split"] == "test"}
+        self.out = base / "out"
+        self.log = base / "runs.json"
+        self.loaded = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def loaders(self, models_root):
+        from mizan.visa_evaluation import Scorer
+        self.loaded.append(models_root)
+        return {"descriptor": Scorer("descriptor", _small_features, True, "test/descriptor"),
+                "dinov2-engine": Scorer("dinov2-engine", lambda im: _small_features(im) ** 2, True, "test/engine"),
+                "dinov2-native": Scorer("dinov2-native", lambda im: _small_features(im) + .01, False, "test/native")}
+
+    def run_visa(self, **kw):
+        import contextlib, io
+        from scripts.evaluate_visa import run
+        args = dict(models_root="unused", reason="test", loaders=self.loaders, quick=True, log=self.log,
+                    manifest_path=self.manifest)
+        out = kw.pop("out", self.out)
+        args.update(kw)
+        with contextlib.redirect_stdout(io.StringIO()):
+            return run(self.data, out, **args)
+
+    def test_dry_run_never_opens_test_images(self):
+        # Every file the dry run opens, by PIL or by plain open() (hashing for the manifest check included).
+        from unittest import mock
+        import builtins
+        import PIL.Image
+        opened, real_pil, real_open = [], PIL.Image.open, builtins.open
+        def note(fp):
+            if isinstance(fp, (str, bytes)) or hasattr(fp, "__fspath__"):
+                opened.append(os.fsdecode(fp))
+        def pil_spy(fp, *a, **k):
+            note(fp)
+            return real_pil(fp, *a, **k)
+        def open_spy(file, *a, **k):
+            note(file)
+            return real_open(file, *a, **k)
+        with mock.patch.object(PIL.Image, "open", pil_spy), mock.patch.object(builtins, "open", open_spy):
+            self.run_visa(dry_run=True)
+        images = [p for p in opened if p.lower().endswith((".jpg", ".png"))]
+        self.assertTrue(images, "the dry run should open train images")
+        self.assertFalse([p for p in opened if any(p.endswith(t) for t in self.tests)])
+        self.assertFalse((self.out / "basira.json").exists())
+        log = json.loads(self.log.read_text(encoding="utf-8"))
+        self.assertEqual([(e["event"], e["dry_run"]) for e in log], [("started", True), ("finished", True)])
+
+    def test_a_run_is_logged_before_it_scores_and_a_crash_leaves_that_entry(self):
+        from unittest import mock
+        from mizan import visa_evaluation as ve
+        ok = {"passed": True, "checked": ["stub"], "mismatches": [], "bit_exact": True, "rule": "stub"}
+        def broken(models_root):
+            def features(image):
+                raise RuntimeError("scorer crashed")
+            return {k: ve.Scorer(k, features, k != "dinov2-native", "test/" + k) for k in ("descriptor", "dinov2-engine", "dinov2-native")}
+        with mock.patch.object(ve, "fixture_gate", return_value=ok), mock.patch.object(ve, "dinov2_gate", return_value=ok), \
+                mock.patch.object(ve, "frozen_record", return_value={}), \
+                mock.patch("scripts.evaluate_visa.check_seal", return_value=None), self.assertRaises(RuntimeError):
+            self.run_visa(seal="1" * 40, loaders=broken)   # the gates pass; the first VisA image crashes the scorer
+        log = json.loads(self.log.read_text(encoding="utf-8"))
+        self.assertEqual([(e["event"], e["dry_run"], e["seal_commit"]) for e in log], [("started", False, "1" * 40)])
+
+    def test_child_mode_is_only_the_repeat_run_of_a_parent(self):
+        from unittest import mock
+        from mizan import visa_evaluation as ve
+        from mizan.core.contract import Refused
+        from scripts.evaluate_visa import CHILD_ENV, EVIDENCE_DIR
+        ok = {"passed": True, "checked": ["stub"], "mismatches": [], "bit_exact": True, "rule": "stub"}
+        cases = {  # (environment value, --out): each must be refused before anything is scored
+            "no parent": (None, self.out),
+            "a parent that named another folder": (str(self.out.parent / "other"), self.out),
+            "the evidence folder": (str(EVIDENCE_DIR.resolve()), EVIDENCE_DIR),
+        }
+        for name, (value, out) in cases.items():
+            env = {k: v for k, v in os.environ.items() if k != CHILD_ENV} | ({CHILD_ENV: value} if value else {})
+            with self.subTest(name), mock.patch.dict(os.environ, env, clear=True), self.assertRaises(Refused) as cm:
+                self.run_visa(seal="1" * 40, child=True, out=out)
+            self.assertEqual(cm.exception.code, "VISA_CHILD")
+        self.assertEqual(self.loaded, [])
+        # Started by a parent for this folder, it writes there and leaves the log to the parent.
+        with mock.patch.dict(os.environ, {CHILD_ENV: str(self.out.resolve())}), \
+                mock.patch.object(ve, "fixture_gate", return_value=ok), mock.patch.object(ve, "dinov2_gate", return_value=ok), \
+                mock.patch("scripts.evaluate_visa.check_seal", return_value=None):
+            self.run_visa(seal="1" * 40, child=True)
+        self.assertTrue((self.out / "basira.json").exists())
+        self.assertFalse(self.log.exists())
+
+    def test_the_repeat_run_names_its_folder_to_the_child(self):
+        from unittest import mock
+        import scripts.evaluate_visa as ev
+        seen = {}
+        def fake_run(cmd, check, env):
+            out = Path(cmd[cmd.index("--out") + 1])
+            seen.update(cmd=cmd, env=env, out=out)
+            (out / "basira.json").write_text("{}", encoding="utf-8")
+        with mock.patch.object(ev.subprocess, "run", fake_run):
+            self.assertEqual(ev._second_process(self.data, "models", "1" * 40, self.manifest, True), {})
+        self.assertIn("--child", seen["cmd"])
+        self.assertEqual(seen["env"][ev.CHILD_ENV], str(seen["out"].resolve()))
+
+    def test_a_full_run_needs_every_class(self):
+        from mizan.core.contract import Refused
+        with self.assertRaises(Refused) as cm:
+            self.run_visa(dry_run=True, quick=False)   # the stand-in tree has two of the twelve classes
+        self.assertEqual(cm.exception.code, "VISA_CLASSES")
+        self.assertEqual(self.loaded, [])
+
+    def test_the_seal_is_the_commit_that_introduces_the_digest(self):
+        from unittest import mock
+        from mizan import visa
+        from mizan.core.contract import Refused
+        import scripts.evaluate_visa as ev
+        line = f'SEALED_DIGEST = "{visa.SEALED_DIGEST}"'
+        def git_with(parent):
+            def git(*args):
+                if args[0] in ("cat-file", "merge-base"):
+                    return ""
+                if args[0] == "show":
+                    return {"S:mizan/visa.py": line, "S^:mizan/visa.py": parent}[args[1]]
+                raise AssertionError(args)
+            return git
+        with mock.patch.object(ev, "_git", git_with(None)):
+            ev.check_seal("S")                       # the digest first appears in S
+        with mock.patch.object(ev, "_git", git_with(line)), self.assertRaises(Refused) as cm:
+            ev.check_seal("S")                       # S only inherits it: a later commit, not the seal
+        self.assertEqual(cm.exception.code, "VISA_SEAL")
+
+    def test_failed_gate_writes_nothing_and_exits_2(self):
+        from unittest import mock
+        from mizan import visa_evaluation as ve
+        bad = {"passed": False, "checked": ["row[0].p_value"], "mismatches": [{"name": "row[0].p_value"}], "bit_exact": False, "rule": "x"}
+        with mock.patch.object(ve, "fixture_gate", return_value=bad), \
+                mock.patch("scripts.evaluate_visa.check_seal", return_value=None):
+            with self.assertRaises(SystemExit) as cm:
+                self.run_visa(seal="0" * 40)
+        self.assertEqual(cm.exception.code, 2)
+        self.assertFalse(self.out.exists() and any(self.out.iterdir()))
+        self.assertFalse(self.log.exists())
+
+    def test_evidence_dir_needs_repeat(self):
+        from scripts.evaluate_visa import EVIDENCE_DIR
+        from mizan.core.contract import Refused
+        import contextlib, io
+        from scripts.evaluate_visa import run
+        with self.assertRaises(Refused) as cm, contextlib.redirect_stdout(io.StringIO()):
+            run(self.data, EVIDENCE_DIR, models_root="unused", reason="test", loaders=self.loaders, seal="0" * 40,
+                log=self.log, manifest_path=self.manifest)
+        self.assertEqual(cm.exception.code, "EVIDENCE_OUT")
+        self.assertEqual(self.loaded, [])
+
+    def test_real_run_requires_seal_and_matching_digest(self):
+        from unittest import mock
+        from mizan import visa
+        from mizan.core.contract import Refused
+        with self.assertRaises(Refused) as cm:
+            self.run_visa()
+        self.assertEqual(cm.exception.code, "VISA_SEAL")
+        with mock.patch.object(visa, "SEALED_DIGEST", "0" * 64), \
+                mock.patch("scripts.evaluate_visa.check_seal", return_value=None):
+            with self.assertRaises(Refused) as cm:
+                self.run_visa(seal="0" * 40)
+        self.assertEqual(cm.exception.code, "VISA_PROTOCOL")
+        self.assertEqual(self.loaded, [])
+
+    def test_run_log_appends(self):
+        self.run_visa(dry_run=True, reason="first")
+        self.run_visa(dry_run=True, reason="second")
+        log = json.loads(self.log.read_text(encoding="utf-8"))
+        self.assertEqual([(e["reason"], e["event"]) for e in log],
+                         [("first", "started"), ("first", "finished"), ("second", "started"), ("second", "finished")])
+        for entry in log:
+            self.assertTrue({"commit", "date", "dry_run", "reason", "protocol_digest", "event"} <= set(entry))
+        for entry in log[1::2]:
+            self.assertTrue({"elapsed_seconds", "peak_rss_mib"} <= set(entry))
+
+    def test_log_records_the_tree_state_taken_at_the_start(self):
+        from unittest import mock
+        import scripts.evaluate_visa as ev
+        states = iter([{"commit": "c0ffee", "dirty": False}, {"commit": "later", "dirty": True}])
+        with mock.patch.object(ev, "_git_state", side_effect=lambda: next(states)) as state:
+            self.run_visa(dry_run=True)
+        self.assertEqual(state.call_count, 1)
+        entry = json.loads(self.log.read_text(encoding="utf-8"))[-1]
+        self.assertEqual((entry["commit"], entry["dirty"]), ("c0ffee", False))
+
+    def test_tree_state_ignores_untracked_outputs_but_not_untracked_code(self):
+        from unittest import mock
+        import scripts.evaluate_visa as ev
+        def git_with(tracked, untracked_code):
+            def git(*args):
+                if args[0] == "rev-parse":
+                    return "abc"
+                if args == ("status", "--porcelain", "--untracked-files=no"):
+                    return tracked
+                if args == ("status", "--porcelain", "--untracked-files=all", "--", "mizan", "scripts"):
+                    return untracked_code
+                raise AssertionError(args)
+            return git
+        for tracked, code, dirty in (("", "", False),            # new evidence under reports/ is not code
+                                     (" M mizan/visa.py", "", True),
+                                     ("", "?? mizan/helper.py", True)):   # an untracked module can shadow imported code
+            with self.subTest(tracked=tracked, code=code), mock.patch.object(ev, "_git", git_with(tracked, code)):
+                self.assertEqual(ev._git_state(), {"commit": "abc", "dirty": dirty})
+
+    def test_real_run_writes_a_gated_repeated_record(self):
+        from unittest import mock
+        from mizan import visa_evaluation as ve
+        ok = {"passed": True, "checked": ["stub"], "mismatches": [], "bit_exact": True, "rule": "stub"}
+        with mock.patch.object(ve, "fixture_gate", return_value=ok), mock.patch.object(ve, "dinov2_gate", return_value=ok), \
+                mock.patch("scripts.evaluate_visa.check_seal", return_value=None):
+            self.run_visa(seal="1" * 40, repeat=True)
+        record = json.loads((self.out / "basira.json").read_text(encoding="utf-8"))
+        self.assertTrue(record["gate"]["passed"])
+        self.assertTrue(record["repeat_run"]["identical"])
+        self.assertEqual(record["seal_commit"], "1" * 40)
+        self.assertIn("environment", record)
+        log = json.loads(self.log.read_text(encoding="utf-8"))
+        self.assertFalse(log[-1]["dry_run"])
+
+
+if __name__ == "__main__":
+    unittest.main()

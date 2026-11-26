@@ -230,5 +230,114 @@ class FoundationModelFactsTests(unittest.TestCase):
         self.assertIn('<bdi dir="ltr">', arabic)
 
 
+VISA = json.loads((ROOT / "reports/visa/basira.json").read_bytes())
+
+
+def visa_changed(*edits):
+    """The VisA record with each (path, value) edit applied; a path step may be a paired comparison's name."""
+    record = copy.deepcopy(VISA)
+    for path, value in edits:
+        node = record
+        for key in path[:-1]:
+            node = next(c for c in node if c["comparison"] == key) if isinstance(node, list) else node[key]
+        node[path[-1]] = value
+    return record
+
+
+class RealImageFactsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.packet = strict_load((ROOT / "reports/demo/demo_results.json").read_bytes())
+        cls.figures = build_site.facts(cls.packet)
+
+    def test_facts_read_the_real_image_evaluation(self):
+        expected = {  # the stored values in reports/visa/basira.json, as the results page rounds them
+            "visa_classes": "12", "visa_test_normals": "962", "visa_test_anomalies": "1,200",
+            "visa_alpha": "5%", "visa_full_reference": "30", "visa_full_calibration": "100",
+            "visa_desc_detect": "26.8%", "visa_desc_detect_lo": "24.3%", "visa_desc_detect_hi": "29.4%",
+            "visa_desc_fa": "5.6%", "visa_desc_fa_lo": "4.2%", "visa_desc_fa_hi": "7.3%",
+            "visa_native_detect": "38.6%", "visa_native_detect_lo": "35.8%", "visa_native_detect_hi": "41.4%",
+            "visa_exch_en": "within the exact range the calibration promise implies",
+            "visa_exch_ar": "ضمن المدى الدقيق الذي يقتضيه وعد المعايرة",
+            "visa_auroc_desc": "0.717", "visa_auroc_desc_lo": "0.696", "visa_auroc_desc_hi": "0.736",
+            "visa_auroc_native": "0.831", "visa_auroc_native_lo": "0.814", "visa_auroc_native_hi": "0.847",
+        }
+        self.assertEqual({k: v for k, v in self.figures.items() if k.startswith("visa_")}, expected)
+        # The same figures, computed here from the record itself.
+        full = {s: VISA["pooled"][s]["full"] for s in ("descriptor", "dinov2-native")}
+        computed = {
+            "visa_classes": str(len(VISA["splits"])),
+            "visa_test_normals": build_site.group(sum(s["test_normal"] for s in VISA["splits"].values())),
+            "visa_test_anomalies": build_site.group(sum(s["test_anomaly"] for s in VISA["splits"].values())),
+            **{f"visa_{k}_{m}{suffix}": build_site.percent(v) for k, s, m in (("desc", "descriptor", "detect"), ("desc", "descriptor", "fa"),
+                                                                             ("native", "dinov2-native", "detect"))
+               for suffix, v in zip(("", "_lo", "_hi"), (lambda p: (p["rate"], *p["ci95"]))(full[s]["detection" if m == "detect" else "false_alert"]))},
+            **{f"visa_auroc_{k}{suffix}": f"{v:.3f}" for k, s in (("desc", "descriptor"), ("native", "dinov2-native"))
+               for suffix, v in zip(("", "_lo", "_hi"), (VISA["auroc"][s]["mean"], *VISA["auroc"][s]["mean_ci95"]))},
+        }
+        self.assertEqual({k: self.figures[k] for k in computed}, computed)
+
+    def test_exchangeability_phrase_follows_the_verdict(self):
+        path = ["exchangeability", "descriptor", "full", "pooled"]
+        lo, hi = VISA["exchangeability"]["descriptor"]["full"]["pooled"]["range95"]
+        for observed, verdict, en in [(hi + 1, "more", "above"), (lo - 1, "fewer", "below"), (lo, "consistent", "within")]:
+            with self.subTest(verdict=verdict):
+                f = build_site.visa_facts(visa_changed((path + ["observed"], observed), (path + ["verdict"], verdict)))
+                self.assertTrue(f["visa_exch_en"].startswith(en), f["visa_exch_en"])
+                self.assertNotEqual(f["visa_exch_ar"], "")
+        with self.assertRaisesRegex(SystemExit, "verdict"):  # a verdict that disagrees with its own range
+            build_site.visa_facts(visa_changed((path + ["observed"], hi + 1)))
+
+    def test_wording_that_no_longer_matches_the_record_stops_the_build(self):
+        engine, native = "dinov2-engine - descriptor", "dinov2-native - dinov2-engine"
+        cases = {  # each change must trip its own guard
+            "a gate that did not pass": (visa_changed((["gate", "passed"], False)), "gate passed"),
+            "a repeat run that was not identical": (visa_changed((["repeat_run", "identical"], False)), "repeat run was identical"),
+            "a repeat run in the same process": (visa_changed((["repeat_run", "process"], "the same process (injected scorers)")), "second process"),
+            "stand-in scorers": (visa_changed((["identity", "dinov2", "note"], "injected scorers")), "second process"),
+            "a quick run": (visa_changed((["quick"], True)), "full run"),
+            "another protocol": (visa_changed((["protocol_digest"], "0" * 64)), "sealed"),
+            "no seal commit": (visa_changed((["seal_commit"], None)), "sealed"),
+            "a scorer scored on other images": (visa_changed((["pooled", "dinov2-engine", "full", "false_alert", "n"], 961)), "same official test images"),
+            "most defects caught": (visa_changed((["pooled", "dinov2-native", "full", "detection", "rate"], 0.5)), "most defects pass"),
+            "a detection step no longer resolved": (visa_changed(
+                (["paired", engine, "detection", "ci95"], [-0.01, 0.12]), (["paired", engine, "detection", "reading"], "not resolved")), "catches more"),
+            "an AUROC step no longer resolved": (visa_changed(
+                (["paired", native, "auroc", "ci95"], [-0.001, 0.04]), (["paired", native, "auroc", "reading"], "not resolved")), "catches more"),
+            "a reading that disagrees with its interval": (visa_changed((["paired", native, "detection", "ci95"], [-0.001, 0.04])), "reads 'higher'"),
+            "a false-alert step now resolved": (visa_changed(
+                (["paired", engine, "false_alert", "ci95"], [0.001, 0.02]), (["paired", engine, "false_alert", "reading"], "higher")), "false-alert differences"),
+            "a comparison at another setting": (visa_changed((["paired", engine, "at"], "as_shipped, marginal")), "full configuration"),
+            "an unknown verdict": (visa_changed((["exchangeability", "descriptor", "full", "pooled", "verdict"], "odd")), "verdict"),
+        }
+        for name, (record, message) in cases.items():
+            with self.subTest(name), self.assertRaisesRegex(SystemExit, message):
+                build_site.visa_facts(record)
+
+    def test_landing_shows_the_real_image_block_in_both_languages(self):
+        page, _ = build_site.landing_html(self.packet, self.figures)
+        block = re.search(r'<div class="models" id="visa">(.*?)<!-- /visa -->', page, re.S)
+        self.assertIsNotNone(block, "the Real images block is missing")
+        keys = [k for k in self.figures if k.startswith("visa_") and not k.startswith("visa_exch_")]
+        for lang, heading in [("en", "Real images: BASIRA on VisA"), ("ar", "صور حقيقية: بصيرة على VisA")]:
+            spans = "".join(re.findall(rf'<span data-l="{lang}">(.*?)</span>', block.group(1), re.S))
+            with self.subTest(lang=lang):
+                self.assertIn(heading, spans)
+                for key in keys + [f"visa_exch_{lang}"]:
+                    self.assertIn(self.figures[key], block.group(1) if key.endswith(("_detect", "_auroc_desc", "_auroc_native", "_fa")) else spans, key)
+                self.assertIn("Zou et al., 2022", spans)
+                self.assertIn("CC BY 4.0", spans)
+                # The pooled false-alert interval is labelled as describing these fitted thresholds only (the spec).
+                self.assertIn({"en": "fitted thresholds only", "ar": "العتبات المعايَرة هذه فقط"}[lang], spans)
+                self.assertNotRegex(spans, r"promise held|وعد الإنذار الكاذب صمد")
+        self.assertIn('href="report/visa/"', block.group(1))
+        for path in ("report/visa/index.html", "report/visa/classes.html"):
+            self.assertIn(path, build_site.COPIED, "the site serves the results pages where the link points")
+        # The page no longer says that all its data is generated.
+        self.assertNotRegex(page, r"All data is generated\.|كل البيانات مولّدة،? ولا شيء")
+        limits = re.search(r'<section class="band" id="limits">(.*?)</section>', page, re.S).group(1)
+        self.assertIn("VisA", limits)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -184,6 +184,51 @@ def check_models(browser, path, screenshots=None):
     return results
 
 
+def check_visa(browser, folder, screenshots=None):
+    """BASIRA on real images (VisA): both pages render offline without overflow; every exchangeability Reading
+    follows the stored verdict and every comparison Reading the stored interval's sign; the four examples show an
+    image or the word none; .fit tables fit a phone; text contrast passes in light and dark."""
+    record = json.loads((ROOT / "reports/visa/basira.json").read_bytes())
+    verdict = {"consistent": "Consistent", "more": "More false alerts", "fewer": "Fewer false alerts"}
+    scorers, rules = ("descriptor", "dinov2-engine", "dinov2-native"), ("as_shipped", "full", "full_pac")
+    exch = [record["exchangeability"][s][r] for s in scorers for r in rules]
+    want_exch = [verdict[e["pooled"]["verdict"]] if e.get("pooled") else "Not applicable" for e in exch]
+    want_paired = [{"higher": "Higher", "lower": "Lower", "not resolved": "Not resolved"}[p[m]["reading"]]
+                   for p in record["paired"] for m in ("detection", "false_alert", "auroc")]
+    results = []
+    for name, ready in (("index.html", "#visa-section"), ("classes.html", "#visa-classes-section")):
+        path = Path(folder) / name
+        for width, height in [(1280, 900), (390, 844)]:
+            page = browser.new_page(viewport={"width": width, "height": height})
+            errors, external = [], []
+            page.on("pageerror", lambda exc: errors.append(str(exc)))
+            page.on("request", lambda req: external.append(req.url) if req.url.startswith(("https:", "http:")) else None)
+            page.goto(path.resolve().as_uri())
+            page.locator(ready).wait_for(state="visible", timeout=10000)
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), f"{name} overflows at {width}"
+            extra = {}
+            if name == "index.html":
+                got = page.locator("#visa-exch tr td:last-child").all_inner_texts()
+                assert len(got) == len(want_exch) and all(g.startswith(w) for g, w in zip(got, want_exch)), (got, want_exch)
+                paired = page.locator("#visa-paired tr td:last-child").all_inner_texts()
+                assert len(paired) == len(want_paired) and all(g.startswith(w) for g, w in zip(paired, want_paired)), (paired, want_paired)
+                figures = page.locator("#visa-examples figure")
+                shown = [figures.nth(i).locator("img").count() == 1 or "none" in figures.nth(i).inner_text() for i in range(figures.count())]
+                assert figures.count() == 4 and all(shown), "an example is neither an image nor 'none'"
+                extra = {"visa_exchangeability_readings": len(got), "visa_paired_readings": len(paired), "visa_examples": 4}
+            fit = page.evaluate("[...document.querySelectorAll('table.fit')].map(t => t.parentNode.scrollWidth <= t.parentNode.clientWidth)")
+            assert all(fit), f"a .fit table scrolls on {name}"
+            audit = contrast(page, f"{name} {width}")
+            assert not errors and not external, (errors, external)
+            if screenshots:
+                page.screenshot(path=str(Path(screenshots) / f"{width}-visa-{path.stem}.png"), full_page=True)
+            page.close()
+            audit = add_contrast(audit, dark_contrast(browser, path, width, height, ready))
+            results.append({"viewport": [width, height], "views": [f"visa-{path.stem}"], "page_errors": 0, "external_requests": 0,
+                            "fit_tables": len(fit), **extra, "contrast": {**audit, "color_schemes": ["light", "dark"]}})
+    return results
+
+
 def dark_contrast(browser, path, width, height, ready):
     """The report pages also define a dark palette (prefers-color-scheme); audit it the same way."""
     page = browser.new_page(viewport={"width": width, "height": height}, color_scheme="dark")
@@ -294,6 +339,9 @@ def run(chromium=None, screenshots=None, demo=None, spaces=None, site=None):
                 if models.exists():  # the Hugging Face comparison has its own page, linked from the report
                     link = page.locator('#models-link a[href="models.html"]')
                     assert link.count() == 1 and link.is_visible(), "the report does not link to the models page"
+                if (ROOT / "reports/visa/index.html").exists():  # BASIRA on real images, served at report/visa/
+                    link = page.locator('#visa-link a[href="visa/index.html"]')
+                    assert link.count() == 1 and link.is_visible(), "the report does not link to the VisA page"
                 page.mouse.move(0, 0)
                 page.wait_for_timeout(400)  # the last tooltip has faded out before the contrast audit
                 audit = contrast(page, f"report {width}")
@@ -306,6 +354,8 @@ def run(chromium=None, screenshots=None, demo=None, spaces=None, site=None):
                                 "contrast": {**audit, "color_schemes": ["light", "dark"]}})
             if (ROOT / "reports/evaluation/models.html").exists():
                 reports.extend(check_models(browser, ROOT / "reports/evaluation/models.html", screenshots))
+            if (ROOT / "reports/visa/index.html").exists():
+                reports.extend(check_visa(browser, ROOT / "reports/visa", screenshots))
         if site:
             reports.extend(check_landing(browser, site, screenshots))
         browser.close()

@@ -1,0 +1,311 @@
+import contextlib
+import csv
+import http.server
+import io
+import json
+import tarfile
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+
+from PIL import Image
+
+from mizan.basira import engine as b
+from mizan.core.contract import Refused
+from tests.visa_fixture import make_visa_tree
+
+
+class SplitAndManifestTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "data"
+        self.csv = make_visa_tree(self.root)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_classes_match_types(self):
+        from mizan.visa import CLASSES, TYPES
+        self.assertEqual(len(CLASSES), 12)
+        self.assertEqual(set(TYPES), set(CLASSES))
+        self.assertEqual(set(TYPES.values()), {"complex structure", "multiple instances", "single instance"})
+
+    def test_read_split_parses_and_refuses_train_anomalies(self):
+        from mizan.visa import read_split
+        with open(self.csv, newline="", encoding="utf-8") as f:
+            raw = list(csv.reader(f))
+        rows = read_split(self.csv)
+        self.assertEqual(len(rows), len(raw) - 1)
+        self.assertEqual(set(rows[0]), {"object", "split", "label", "image"})
+        bad = Path(self.tmp.name) / "bad.csv"
+        raw[-1][1] = "train"   # the last row is a test anomaly: mark it train
+        with open(bad, "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows(raw)
+        with self.assertRaises(Refused) as cm:
+            read_split(bad)
+        self.assertEqual(cm.exception.code, "VISA_SPLIT")
+
+    def test_read_split_refuses_unsafe_paths(self):
+        from mizan.visa import read_split
+        with open(self.csv, newline="", encoding="utf-8") as f:
+            raw = list(csv.reader(f))
+        raw[1][3] = "../outside.JPG"
+        bad = Path(self.tmp.name) / "bad.csv"
+        with open(bad, "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows(raw)
+        with self.assertRaises(Refused) as cm:
+            read_split(bad)
+        self.assertEqual(cm.exception.code, "VISA_SPLIT")
+
+    def test_manifest_round_trip_and_tamper(self):
+        from mizan.visa import build_manifest, read_split, verify_manifest
+        rows = read_split(self.csv)
+        manifest = build_manifest(self.root, rows, "a" * 64, "b" * 64)
+        self.assertEqual([x["path"] for x in manifest["images"]], sorted(r["image"] for r in rows))
+        verify_manifest(self.root, manifest)
+        victim = manifest["images"][3]["path"]
+        (self.root / victim).write_bytes((self.root / victim).read_bytes() + b"\0")
+        with self.assertRaises(Refused) as cm:
+            verify_manifest(self.root, manifest)
+        self.assertEqual(cm.exception.code, "VISA_HASH")
+        self.assertIn(victim, str(cm.exception))
+
+    def test_engine_png_equals_engine_decode(self):
+        from mizan.visa import engine_png
+        path = self.root / "candle" / "Data" / "Images" / "Normal" / "0000.JPG"
+        expected = Image.open(path).convert("L").resize((96, 96), Image.Resampling.BILINEAR)
+        self.assertEqual(b.decode_image(engine_png(path)).tobytes(), expected.tobytes())
+
+
+class ProtocolTests(unittest.TestCase):
+    def setUp(self):
+        from mizan.visa import build_manifest, read_split
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "data"
+        self.csv = make_visa_tree(self.root)
+        self.manifest = build_manifest(self.root, read_split(self.csv), "a" * 64, "b" * 64)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_protocol_digest_is_sealed(self):
+        from mizan.core.contract import digest
+        from mizan.visa import PROTOCOL, SEALED_DIGEST
+        self.assertEqual(digest(PROTOCOL), SEALED_DIGEST)
+
+    def test_class_seed_known_value(self):
+        import hashlib
+        from mizan.visa import class_seed
+        self.assertEqual(class_seed("candle"), int.from_bytes(hashlib.sha256(b"20220922:candle").digest()[:8], "big"))
+
+    def test_split_is_deterministic_and_disjoint(self):
+        from mizan.visa import protocol_split
+        first = protocol_split(self.root, self.manifest, "candle", sizes=(2, 2))
+        self.assertEqual(first, protocol_split(self.root, self.manifest, "candle", sizes=(2, 2)))
+        lists = ("reference", "calibration", "draw_pool", "eval_pool", "test_normal", "test_anomaly")
+        self.assertEqual([len(first[k]) for k in lists], [2, 2, 1, 1, 2, 1])
+        seen = [p for k in lists for p in first[k]]
+        self.assertEqual(len(seen), len(set(seen)))
+        train = {x["path"] for x in self.manifest["images"] if x["object"] == "candle" and x["split"] == "train"}
+        self.assertTrue(set(first["reference"] + first["calibration"] + first["draw_pool"] + first["eval_pool"]) <= train)
+        self.assertEqual(first["duplicates_dropped"], 0)
+
+    def test_duplicate_train_normals_are_dropped_and_counted(self):
+        from mizan.visa import build_manifest, protocol_split, read_split
+        source = self.root / "candle" / "Data" / "Images" / "Normal" / "0000.JPG"
+        copy = "candle/Data/Images/Normal/0099.JPG"
+        (self.root / copy).write_bytes(source.read_bytes())
+        with open(self.csv, "a", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerow(["candle", "train", "normal", copy, ""])
+        manifest = build_manifest(self.root, read_split(self.csv), "a" * 64, "b" * 64)
+        split = protocol_split(self.root, manifest, "candle", sizes=(2, 2))
+        self.assertEqual(split["duplicates_dropped"], 1)
+        self.assertNotIn(copy, [p for k in ("reference", "calibration", "draw_pool", "eval_pool") for p in split[k]])
+
+    def test_split_refuses_a_class_too_small_for_the_protocol(self):
+        from mizan.visa import protocol_split
+        with self.assertRaises(Refused) as cm:
+            protocol_split(self.root, self.manifest, "candle")   # 6 train normals cannot hold 30 + 100
+        self.assertEqual(cm.exception.code, "VISA_SPLIT_SIZE")
+
+
+class _Blob(http.server.BaseHTTPRequestHandler):
+    """Serves one byte string with HEAD, Accept-Ranges and 206 partial responses, counting the bytes it sends."""
+    blob = b""
+    sent = 0
+
+    def log_message(self, *args):
+        pass
+
+    def _range(self):
+        spec = self.headers.get("Range")
+        if not spec:
+            return 0, len(self.blob) - 1, False
+        start, end = spec.removeprefix("bytes=").split("-")
+        return int(start), min(int(end) if end else len(self.blob) - 1, len(self.blob) - 1), True
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(len(self.blob)))
+        self.end_headers()
+
+    def do_GET(self):
+        start, end, partial = self._range()
+        body = self.blob[start:end + 1]
+        self.send_response(206 if partial else 200)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(len(body)))
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{len(self.blob)}")
+        self.end_headers()
+        self.wfile.write(body)
+        type(self).sent += len(body)
+
+
+class RangedDownloadTests(unittest.TestCase):
+    def setUp(self):
+        import hashlib
+        import os
+        import threading
+        self.tmp = tempfile.TemporaryDirectory()
+        self.blob = os.urandom(1_000_003)
+        self.sha = hashlib.sha256(self.blob).hexdigest()
+        handler = type("Handler", (_Blob,), {"blob": self.blob, "sent": 0})
+        self.handler = handler
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/VisA_test.tar"
+        self.dest = Path(self.tmp.name) / "VisA_test.tar"
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.tmp.cleanup()
+
+    def download(self, **kw):
+        from scripts.fetch_visa import download
+        with contextlib.redirect_stdout(io.StringIO()):
+            return download(self.url, self.dest, len(self.blob), chunks=4, **kw)
+
+    def test_ranged_download_assembles_identical_bytes(self):
+        self.assertEqual(self.download(), self.sha)
+        self.assertEqual(self.dest.read_bytes(), self.blob)
+        self.assertEqual(sorted(p.name for p in self.dest.parent.iterdir()), [self.dest.name])
+
+    def test_ranged_download_resumes_existing_chunks(self):
+        size = -(-len(self.blob) // 4)
+        part = self.dest.with_name(f"{self.dest.name}.part-{size}-{2 * size - 1}")   # each range file names its bytes
+        part.write_bytes(self.blob[size:size + size // 2])   # half of the second chunk arrived before an interruption
+        self.assertEqual(self.download(), self.sha)
+        self.assertEqual(self.dest.read_bytes(), self.blob)
+        self.assertEqual(self.handler.sent, len(self.blob) - size // 2)
+
+    def test_range_files_from_another_chunking_are_never_joined(self):
+        # An interrupted run with 8 ranges leaves files whose bytes belong elsewhere under a 4-range split.
+        size8 = -(-len(self.blob) // 8)
+        stale = self.dest.with_name(f"{self.dest.name}.part-{size8}-{2 * size8 - 1}")
+        stale.write_bytes(self.blob[size8:size8 + 1000])
+        old = self.dest.with_name(self.dest.name + ".part01")   # the earlier, unnamed range format
+        old.write_bytes(b"x" * 1000)
+        self.assertEqual(self.download(), self.sha)
+        self.assertEqual(sorted(p.name for p in self.dest.parent.iterdir()), [self.dest.name])
+
+    def test_a_server_that_ignores_or_misplaces_the_range_is_refused(self):
+        from scripts.fetch_visa import download
+        class Whole(_Blob):   # answers a range request with the whole file
+            def _range(self):
+                return 0, len(self.blob) - 1, False
+        class Shifted(_Blob):   # answers 206 for bytes one past those asked for
+            def _range(self):
+                start, end, partial = super()._range()
+                return min(start + 1, end), end, partial
+        for handler in (Whole, Shifted):
+            with self.subTest(handler.__name__), tempfile.TemporaryDirectory() as d:
+                server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), type("H", (handler,), {"blob": self.blob, "sent": 0}))
+                threading.Thread(target=server.serve_forever, daemon=True).start()
+                dest = Path(d) / "VisA_test.tar"
+                try:
+                    with self.assertRaises(Refused) as cm, contextlib.redirect_stdout(io.StringIO()):
+                        download(f"http://127.0.0.1:{server.server_address[1]}/VisA_test.tar", dest, len(self.blob), chunks=4)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                self.assertEqual(cm.exception.code, "VISA_DOWNLOAD")
+                self.assertFalse(dest.exists())
+
+    def test_size_mismatch_is_refused_before_anything_is_written(self):
+        from scripts.fetch_visa import download
+        with self.assertRaises(Refused) as cm, contextlib.redirect_stdout(io.StringIO()):
+            download(self.url, self.dest, len(self.blob) + 1, chunks=4)
+        self.assertEqual(cm.exception.code, "VISA_DOWNLOAD")
+        self.assertEqual(list(self.dest.parent.iterdir()), [])
+        self.assertEqual(self.handler.sent, 0)
+
+
+class FetchTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        tree = base / "tree"
+        self.csv = make_visa_tree(tree)
+        self.archive = base / "VisA_test.tar"
+        with tarfile.open(self.archive, "w") as t:
+            for cls in ("candle", "pcb1"):
+                t.add(tree / cls, arcname=f"VisA/{cls}")
+        self.out = base / "out"
+        self.manifest = base / "manifest.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def fetch(self, archive_bytes):
+        from scripts.fetch_visa import main
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            return main(["--out", str(self.out), "--manifest", str(self.manifest),
+                         "--archive-url", self.archive.as_uri(), "--split-url", self.csv.as_uri()],
+                        archive_bytes=archive_bytes, split_bytes=self.csv.stat().st_size)
+
+    def test_fetch_refuses_wrong_size_and_keeps_no_partial(self):
+        code = self.fetch(self.archive.stat().st_size + 1)   # the download comes out one byte short
+        self.assertNotEqual(code, 0)
+        self.assertEqual(sorted(p.name for p in self.out.rglob("*") if p.suffix in (".part", ".tar")), [])
+        self.assertFalse((self.out / "data").exists())
+        self.assertFalse(self.manifest.exists())
+
+    def test_extraction_refuses_a_member_that_escapes_and_leaves_nothing(self):
+        from scripts.fetch_visa import extract
+        evil = Path(self.tmp.name) / "evil.tar"
+        payload = Path(self.tmp.name) / "payload.txt"
+        payload.write_text("x", encoding="utf-8")
+        data = Path(self.tmp.name) / "data"
+        with tarfile.open(evil, "w") as t:
+            t.add(payload, arcname="VisA/ok.txt")
+            t.add(payload, arcname="../escaped.txt")
+        with self.assertRaises(tarfile.TarError):   # a member that climbs out is refused
+            extract(evil, data)
+        self.assertFalse(data.exists())
+        self.assertFalse(data.with_name("data.part").exists())
+        self.assertFalse((Path(self.tmp.name) / "escaped.txt").exists())
+        with tarfile.open(evil, "w") as t:          # an absolute member is made relative and stays inside
+            t.add(payload, arcname="VisA/ok.txt")
+            t.add(payload, arcname="/abs/escaped.txt")
+        extract(evil, data)
+        self.assertTrue((data / "abs" / "escaped.txt").is_file())
+        self.assertFalse(Path("/abs/escaped.txt").exists())
+
+    def test_fetch_writes_then_verifies_the_manifest(self):
+        from mizan.visa import verify_manifest
+        self.assertEqual(self.fetch(self.archive.stat().st_size), 0)
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        self.assertEqual(len(manifest["images"]), 18)
+        self.assertEqual(len(manifest["archive_sha256"]), 64)
+        verify_manifest(self.out / "data" / "VisA", manifest)
+        before = self.manifest.read_bytes()
+        self.assertEqual(self.fetch(self.archive.stat().st_size), 0)   # a second run verifies, never rewrites
+        self.assertEqual(self.manifest.read_bytes(), before)
+
+
+if __name__ == "__main__":
+    unittest.main()

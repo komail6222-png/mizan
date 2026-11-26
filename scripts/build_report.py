@@ -229,6 +229,12 @@ MODELS_LINK = r"""<section id="models-link">
 </section>
 """
 
+VISA_LINK = r"""<section id="visa-link">
+<h2>BASIRA on real images</h2>
+<p class="lede">The inspection engine, unchanged, on real products from the public VisA dataset (CC BY 4.0), with a protocol sealed before any test image was scored, has its own page: <a href="visa/index.html">BASIRA on real images</a>.</p>
+</section>
+"""
+
 PAGE = r"""<div class="kicker">Release 3.0 results, evaluated on generated fixtures</div>
 <h1>Evaluation report</h1>
 <p class="lede">What the three systems decide on held-out generated data, what the statistics promise, and where the evidence is still thin. Every number on this page comes from the JSON files under <code>reports/</code>.</p>
@@ -464,7 +470,8 @@ def build(source, out, models_out=None, hf_source=None):
     """Write the report to out and, when there is Hugging Face evidence, the models page to models_out (default: a
     models.html beside out), linked from the report. Returns out."""
     models = models_summary(source, hf_source)
-    body = PAGE.replace("%%MODELS_LINK%%", MODELS_LINK if models else "")
+    visa = (Path(source).parent / "visa" / "index.html").exists()   # scripts/build_visa_report.py, served at report/visa/
+    body = PAGE.replace("%%MODELS_LINK%%", (MODELS_LINK if models else "") + (VISA_LINK if visa else ""))
     Path(out).write_text(_page(body, summarize(source), "MIZAN | Evaluation report", "What is MIZAN?", "https://komail6222-png.github.io/mizan/"), encoding="utf-8")
     if models:
         target = Path(models_out) if models_out else Path(out).with_name("models.html")
