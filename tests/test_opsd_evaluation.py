@@ -279,5 +279,150 @@ class RecordTests(unittest.TestCase):
         self.assertIn("illustrative tariff units", text)
 
 
+class RunnerTests(unittest.TestCase):
+    OK = {"passed": True, "ridge": {"checked": ["x"] * 253, "mismatches": []}, "chronos": {"checked": ["y"] * 8, "mismatches": []}}
+
+    def setUp(self):
+        import hashlib
+        import os
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from mizan import opsd
+        from tests.opsd_fixture import make_opsd_csv
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.data = base / "opsd"
+        self.data.mkdir()
+        csv_path = make_opsd_csv(self.data / opsd.FILE_NAME)
+        self.expected = (csv_path.stat().st_size, hashlib.sha256(csv_path.read_bytes()).hexdigest())
+        self.out = base / "out"
+        self.log = base / "runs.json"
+        self.gate = mock.patch("mizan.opsd_evaluation.generated_gate", return_value=self.OK)
+        self.seal = mock.patch("scripts.evaluate_opsd.check_seal", return_value=None)
+        self.env = mock.patch.dict(os.environ, {k: v for k, v in os.environ.items() if k != "MIZAN_OPSD_REPEAT_OUT"}, clear=True)
+        for p in (self.gate, self.seal, self.env):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_opsd(self, **kw):
+        import contextlib
+        import io
+        from scripts.evaluate_opsd import run
+        out = kw.pop("out", self.out)
+        args = dict(models_root="unused", reason="test", forecaster=stub_forecaster, quick=True, log=self.log,
+                    expected=self.expected, seal="1" * 40)
+        args.update(kw)
+        with contextlib.redirect_stdout(io.StringIO()):
+            return run(self.data, out, **args)
+
+    def log_events(self):
+        import json
+        return [e["event"] for e in json.loads(self.log.read_text(encoding="utf-8"))] if self.log.exists() else []
+
+    def test_evidence_dir_needs_repeat(self):
+        from scripts.evaluate_opsd import EVIDENCE_DIR
+        with self.assertRaises(Refused) as cm:
+            self.run_opsd(out=EVIDENCE_DIR)
+        self.assertEqual(cm.exception.code, "EVIDENCE_OUT")
+        self.assertEqual(self.log_events(), [])
+
+    def test_real_run_requires_seal_and_matching_digest(self):
+        from unittest import mock
+        from mizan import opsd
+        with self.assertRaises(Refused) as cm:
+            self.run_opsd(seal=None)
+        self.assertEqual(cm.exception.code, "OPSD_SEAL")
+        with mock.patch.object(opsd, "SEALED_DIGEST", "0" * 64), self.assertRaises(Refused) as cm:
+            self.run_opsd()
+        self.assertEqual(cm.exception.code, "OPSD_PROTOCOL")
+
+    def test_a_changed_file_is_refused_before_parsing(self):
+        from unittest import mock
+        from mizan import opsd
+        with mock.patch.object(opsd, "hourly", side_effect=AssertionError("parsed")), self.assertRaises(Refused) as cm:
+            self.run_opsd(expected=(self.expected[0], "0" * 64))
+        self.assertEqual(cm.exception.code, "OPSD_HASH")
+
+    def test_failed_gate_writes_nothing_and_exits_2(self):
+        from unittest import mock
+        bad = {"passed": False, "ridge": {"checked": ["x"], "mismatches": ["decision_quality.candidate.total_cost"]},
+               "chronos": {"checked": ["y"], "mismatches": []}}
+        with mock.patch("mizan.opsd_evaluation.generated_gate", return_value=bad), self.assertRaises(SystemExit) as cm:
+            self.run_opsd()
+        self.assertEqual(cm.exception.code, 2)
+        self.assertFalse(self.out.exists() and any(self.out.iterdir()))
+        self.assertEqual(self.log_events(), [])
+
+    def test_a_crash_after_the_start_leaves_the_started_entry(self):
+        from unittest import mock
+        with mock.patch("mizan.opsd_evaluation.evaluate_opsd", side_effect=RuntimeError("crash")), self.assertRaises(RuntimeError):
+            self.run_opsd()
+        self.assertEqual(self.log_events(), ["started"])
+
+    def test_child_mode_is_only_the_repeat_run_of_a_parent(self):
+        import os
+        from unittest import mock
+        from scripts.evaluate_opsd import CHILD_ENV, EVIDENCE_DIR
+        for name, (value, out) in {"no parent": (None, self.out), "another folder": (str(self.out.parent / "x"), self.out),
+                                   "the evidence folder": (str(EVIDENCE_DIR.resolve()), EVIDENCE_DIR)}.items():
+            env = {CHILD_ENV: value} if value else {}
+            with self.subTest(name), mock.patch.dict(os.environ, env), self.assertRaises(Refused) as cm:
+                self.run_opsd(child=True, out=out)
+            self.assertEqual(cm.exception.code, "OPSD_CHILD")
+        with mock.patch.dict(os.environ, {CHILD_ENV: str(self.out.resolve())}):
+            self.run_opsd(child=True)
+        self.assertTrue((self.out / "rasid.json").exists())
+        self.assertEqual(self.log_events(), [])
+
+    def test_the_repeat_run_names_its_folder_to_the_child(self):
+        from pathlib import Path
+        from unittest import mock
+        import scripts.evaluate_opsd as eo
+        seen = {}
+        def fake_run(cmd, check, env):
+            out = Path(cmd[cmd.index("--out") + 1])
+            seen.update(cmd=cmd, env=env, out=out)
+            (out / "rasid.json").write_text("{}", encoding="utf-8")
+        with mock.patch.object(eo.subprocess, "run", fake_run):
+            self.assertEqual(eo._second_process(self.data, "models", "1" * 40, True), {})
+        self.assertIn("--child", seen["cmd"])
+        self.assertEqual(seen["env"][eo.CHILD_ENV], str(seen["out"].resolve()))
+
+    def test_the_seal_is_the_commit_that_introduces_the_digest(self):
+        from unittest import mock
+        from mizan import opsd
+        import scripts.evaluate_opsd as eo
+        self.seal.stop()
+        line = f'SEALED_DIGEST = "{opsd.SEALED_DIGEST}"'
+        def git_with(parent):
+            def git(*args):
+                if args[0] in ("cat-file", "merge-base"):
+                    return ""
+                return {"S:mizan/opsd.py": line, "S^:mizan/opsd.py": parent}[args[1]]
+            return git
+        with mock.patch.object(eo, "_git", git_with(None)):
+            eo.check_seal("S")
+        with mock.patch.object(eo, "_git", git_with(line)), self.assertRaises(Refused) as cm:
+            eo.check_seal("S")
+        self.assertEqual(cm.exception.code, "OPSD_SEAL")
+        self.seal.start()
+
+    def test_a_stub_run_writes_a_gated_repeated_record(self):
+        import json
+        record = self.run_opsd(repeat=True)
+        stored = json.loads((self.out / "rasid.json").read_text(encoding="utf-8"))
+        self.assertTrue(stored["gate"]["passed"])
+        self.assertEqual(stored["repeat_run"], {"identical": True, "process": "the same process (injected forecaster)",
+                                                "differing_values": 0, "differences": []})
+        self.assertEqual(stored["seal_commit"], "1" * 40)
+        self.assertIn("environment", stored)
+        self.assertEqual(set(stored["sites"]), set(record["sites"]))
+        self.assertEqual(self.log_events(), ["started", "finished"])
+
+
 if __name__ == "__main__":
     unittest.main()
