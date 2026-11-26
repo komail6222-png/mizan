@@ -229,6 +229,45 @@ def check_visa(browser, folder, screenshots=None):
     return results
 
 
+def check_opsd(browser, folder, screenshots=None):
+    """RASID on real load (OPSD): the page renders offline without overflow; every comparison Reading, per site and
+    pooled, follows the stored reading (itself from the interval's sign); .fit tables fit a phone; text contrast
+    passes in light and dark."""
+    record = json.loads((ROOT / "reports/opsd/rasid.json").read_bytes())
+    word = {"higher": "Higher", "lower": "Lower", "not resolved": "Not resolved"}
+    sites = sorted(record["sites"])
+    want = {"#opsd-paired": [word[p["reading"]] for s in sites for p in record["sites"][s]["paired"]],
+            "#opsd-accuracy-paired": [word[p["reading"]] for s in sites for p in record["sites"][s]["accuracy"]],
+            "#opsd-pooled": [word[p["reading"]] for p in record["pooled"]["paired"]],
+            "#opsd-pooled-accuracy": [word[p["reading"]] for p in record["pooled"]["accuracy"]]}
+    path = Path(folder) / "index.html"
+    results = []
+    for width, height in [(1280, 900), (390, 844)]:
+        page = browser.new_page(viewport={"width": width, "height": height})
+        errors, external = [], []
+        page.on("pageerror", lambda exc: errors.append(str(exc)))
+        page.on("request", lambda req: external.append(req.url) if req.url.startswith(("https:", "http:")) else None)
+        page.goto(path.resolve().as_uri())
+        page.locator("#opsd-section").wait_for(state="visible", timeout=10000)
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), f"OPSD page overflows at {width}"
+        readings = 0
+        for table, expected in want.items():
+            got = page.locator(f"{table} tr td:last-child").all_inner_texts()
+            assert len(got) == len(expected) and all(g.startswith(w) for g, w in zip(got, expected)), (table, got, expected)
+            readings += len(got)
+        fit = page.evaluate("[...document.querySelectorAll('table.fit')].map(t => t.parentNode.scrollWidth <= t.parentNode.clientWidth)")
+        assert all(fit), "a .fit table scrolls on the OPSD page"
+        audit = contrast(page, f"opsd {width}")
+        assert not errors and not external, (errors, external)
+        if screenshots:
+            page.screenshot(path=str(Path(screenshots) / f"{width}-opsd.png"), full_page=True)
+        page.close()
+        audit = add_contrast(audit, dark_contrast(browser, path, width, height, "#opsd-section"))
+        results.append({"viewport": [width, height], "views": ["opsd"], "page_errors": 0, "external_requests": 0,
+                        "fit_tables": len(fit), "opsd_readings": readings, "contrast": {**audit, "color_schemes": ["light", "dark"]}})
+    return results
+
+
 def dark_contrast(browser, path, width, height, ready):
     """The report pages also define a dark palette (prefers-color-scheme); audit it the same way."""
     page = browser.new_page(viewport={"width": width, "height": height}, color_scheme="dark")
@@ -342,6 +381,9 @@ def run(chromium=None, screenshots=None, demo=None, spaces=None, site=None):
                 if (ROOT / "reports/visa/index.html").exists():  # BASIRA on real images, served at report/visa/
                     link = page.locator('#visa-link a[href="visa/index.html"]')
                     assert link.count() == 1 and link.is_visible(), "the report does not link to the VisA page"
+                if (ROOT / "reports/opsd/index.html").exists():  # RASID on real load, served at report/opsd/
+                    link = page.locator('#opsd-link a[href="opsd/index.html"]')
+                    assert link.count() == 1 and link.is_visible(), "the report does not link to the OPSD page"
                 page.mouse.move(0, 0)
                 page.wait_for_timeout(400)  # the last tooltip has faded out before the contrast audit
                 audit = contrast(page, f"report {width}")
@@ -356,6 +398,8 @@ def run(chromium=None, screenshots=None, demo=None, spaces=None, site=None):
                 reports.extend(check_models(browser, ROOT / "reports/evaluation/models.html", screenshots))
             if (ROOT / "reports/visa/index.html").exists():
                 reports.extend(check_visa(browser, ROOT / "reports/visa", screenshots))
+            if (ROOT / "reports/opsd/index.html").exists():
+                reports.extend(check_opsd(browser, ROOT / "reports/opsd", screenshots))
         if site:
             reports.extend(check_landing(browser, site, screenshots))
         browser.close()

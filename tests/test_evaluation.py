@@ -284,3 +284,164 @@ class VisaPageTests(unittest.TestCase):
                 (Path(d) / "basira.json").write_text(json.dumps(bad), encoding="utf-8")
                 with self.assertRaises(SystemExit):
                     build(Path(d), Path(d))
+
+
+def _opsd_record():
+    """A complete OPSD evidence record on the stand-in file with the stub forecaster, marked as a full, gated,
+    repeated run so the page builder accepts it."""
+    import tempfile
+    from pathlib import Path
+    from mizan.core.contract import digest
+    from mizan.opsd import PROTOCOL
+    from mizan.opsd_evaluation import evaluate_opsd
+    from tests.opsd_fixture import make_opsd_csv
+    from tests.test_opsd_evaluation import stub_forecaster
+    csv_path = make_opsd_csv(Path(tempfile.mkdtemp()) / "household.csv")
+    record = evaluate_opsd(csv_path, stub_forecaster, quick=True)
+    record.update(quick=False, gate={"passed": True, "ridge": {"checked": ["x"] * 253, "mismatches": []},
+                                     "chronos": {"checked": ["y"] * 8, "mismatches": []}},
+                  repeat_run={"identical": True, "process": "a second Python process", "differing_values": 0, "differences": []},
+                  seal_commit="0" * 40, protocol_digest=digest(PROTOCOL), elapsed_seconds=60.0,
+                  environment={"python": "3.12", "numpy": "2", "scipy": "1", "torch": "2", "cpu": "test"})
+    return record
+
+
+class OpsdPageTests(unittest.TestCase):
+    FORBIDDEN = ("euro", "EUR", "€", "saving", "money")
+
+    @classmethod
+    def setUpClass(cls):
+        import json
+        import tempfile
+        from pathlib import Path
+        from scripts.build_opsd_report import build
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.dir = Path(cls.tmp.name)
+        cls.record = _opsd_record()
+        (cls.dir / "rasid.json").write_text(json.dumps(cls.record), encoding="utf-8")
+        cls.page = build(cls.dir, cls.dir)[0].read_text(encoding="utf-8")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def embedded(self):
+        import json
+        import re
+        return json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', self.page, re.S).group(1))
+
+    def source(self):
+        import re
+        return re.sub(r'<script id="data" type="application/json">.*?</script>', "", self.page, flags=re.S)
+
+    def test_opsd_page_is_small_latin_and_offline(self):
+        import re
+        from scripts.build_site import EXTERNAL
+        self.assertLess(len(self.page), 60000)
+        self.assertIsNone(re.search("[֐-ࣿיִ-﷿ﹰ-﻿]", self.page))
+        self.assertFalse([p.pattern for p in EXTERNAL if p.search(self.page)])
+        self.assertNotIn("%%", self.page)
+
+    def test_opsd_page_embeds_the_source_counts(self):
+        data = self.embedded()
+        for site, s in self.record["sites"].items():
+            with self.subTest(site):
+                self.assertEqual(data["sites"][site]["counts"]["target_days"], s["counts"]["target_days"])
+                self.assertEqual(data["sites"][site]["plans"]["candidate"]["verified_feasible"], s["plans"]["candidate"]["verified_feasible"])
+                self.assertEqual(data["sites"][site]["paired"][0]["reading"], s["paired"][0]["reading"])
+        self.assertEqual(data["pooled"]["paired"][0]["reading"], self.record["pooled"]["paired"][0]["reading"])
+
+    def test_opsd_attribution_and_wording(self):
+        from mizan.opsd import ATTRIBUTION
+        self.assertIn(ATTRIBUTION, self.page)
+        self.assertIn('href="https://creativecommons.org/licenses/by/4.0/"', self.page)
+        self.assertIn("reconstructed", self.page)
+        self.assertIn("illustrative tariff units", self.page)
+        import re
+        text = re.sub(r"<style>.*?</style>", "", self.source(), flags=re.S)   # not the embedded font
+        text = text.replace("Europe", "").replace("aylight-saving", "")      # the time zone and daylight-saving days
+        for word in self.FORBIDDEN:
+            self.assertNotIn(word, text)
+
+    def test_opsd_build_refuses_a_failed_gate_an_unrepeated_run_or_a_quick_record(self):
+        import copy
+        import json
+        import tempfile
+        from pathlib import Path
+        from scripts.build_opsd_report import build
+        for change in ({"gate": {"passed": False}}, {"repeat_run": {"identical": False, "process": "x"}}, {"repeat_run": None},
+                       {"quick": {"days_per_site": 10, "draws": 50}}):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as d:
+                bad = {**copy.deepcopy(self.record), **change}
+                (Path(d) / "rasid.json").write_text(json.dumps(bad), encoding="utf-8")
+                with self.assertRaises(SystemExit):
+                    build(Path(d), Path(d))
+
+    def test_no_protocol_number_is_typed_into_the_page(self):
+        source = self.source()
+        for text in ("7-day", "7 days", "4000", "4,000", "0.35", "2026", "300 days", "2,048"):
+            self.assertNotIn(text, source, text)
+        cfg = self.embedded()["cfg"]
+        self.assertEqual((cfg["block_days"], cfg["draws"], cfg["seed"], cfg["lookback_days"]), (7, 4000, 2026, 7))
+
+
+class ReportOpsdLinkTests(unittest.TestCase):
+    def test_report_links_the_opsd_page_only_when_it_exists(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from scripts.build_report import build
+        evaluation = Path(__file__).resolve().parents[1] / "reports/evaluation"
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "evaluation"
+            src.mkdir()
+            for f in evaluation.glob("*.json"):
+                shutil.copy(f, src / f.name)
+            shutil.copytree(evaluation.parent / "safety", Path(d) / "safety")
+            without = Path(build(src, Path(d) / "a.html")).read_text(encoding="utf-8")
+            (Path(d) / "opsd").mkdir()
+            (Path(d) / "opsd" / "index.html").write_text("<!doctype html>", encoding="utf-8")
+            with_page = Path(build(src, Path(d) / "b.html")).read_text(encoding="utf-8")
+        self.assertNotIn('id="opsd-link"', without)
+        self.assertIn('id="opsd-link"', with_page)
+        self.assertIn('href="opsd/index.html"', with_page)
+
+
+class OpsdPageReviewTests(unittest.TestCase):
+    """Fixes from the final review: pooled accuracy on the page, the copy check beside it, the tariff wording."""
+
+    def build(self, with_copies):
+        import json
+        import tempfile
+        from pathlib import Path
+        from scripts.build_opsd_report import build
+        from scripts.opsd_copy_check import sensitivity
+        d = Path(tempfile.mkdtemp())
+        record = _opsd_record()
+        (d / "rasid.json").write_text(json.dumps(record), encoding="utf-8")
+        if with_copies:
+            copies = sensitivity(record, {}, draws=50)
+            for s in copies["sites"]:
+                copies["sites"][s]["week_copies"] = {"target_days": 3 if s == "industrial1" else 0}
+            (d / "copies.json").write_text(json.dumps(copies), encoding="utf-8")
+        page = build(d, d)[0].read_text(encoding="utf-8")
+        import re
+        data = json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', page, re.S).group(1))
+        return record, page, data
+
+    def test_pooled_accuracy_is_on_the_page(self):
+        record, page, data = self.build(False)
+        self.assertIn('id="opsd-pooled-accuracy"', page)
+        self.assertEqual([p["reading"] for p in data["pooled"]["accuracy"]], [p["reading"] for p in record["pooled"]["accuracy"]])
+        self.assertIsNone(data["copies"])
+
+    def test_the_copy_check_travels_with_the_page(self):
+        record, page, data = self.build(True)
+        self.assertEqual(data["copies"]["target_days"], {"industrial1": 3, "industrial3": 0})
+        self.assertTrue(data["copies"]["same_readings"])
+
+    def test_only_the_battery_is_scaled(self):
+        record, page, data = self.build(False)
+        self.assertNotIn("scaled to each site's size", page)
+        self.assertIn("prices are RASID's illustrative tariff, unchanged", page)
+        self.assertNotIn("neither site ever exported", page)

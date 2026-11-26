@@ -1,0 +1,25 @@
+[
+ {
+  "commit": "a3f37c3a7fdd69dfe38d1c50fde635a438d73ae4",
+  "date": "2026-11-26T19:11:37Z",
+  "dirty": false,
+  "event": "started",
+  "evidence_dir": true,
+  "protocol_digest": "e24cc97b71cae02f50b1067563563624365861064156d51bd01f1e9bb06ad78b",
+  "reason": "sealed protocol, first real run",
+  "seal_commit": "72e51d5099d9c5ebbfeb67ee4a0ca534fae2ce30"
+ },
+ {
+  "commit": "a3f37c3a7fdd69dfe38d1c50fde635a438d73ae4",
+  "date": "2026-11-26T19:19:47Z",
+  "dirty": false,
+  "elapsed_seconds": 505.9,
+  "event": "finished",
+  "evidence_dir": true,
+  "peak_rss_mib": 607.2,
+  "protocol_digest": "e24cc97b71cae02f50b1067563563624365861064156d51bd01f1e9bb06ad78b",
+  "reason": "sealed protocol, first real run",
+  "repeat_identical": true,
+  "seal_commit": "72e51d5099d9c5ebbfeb67ee4a0ca534fae2ce30"
+ }
+]

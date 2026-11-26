@@ -1,0 +1,681 @@
+{
+ "identity": {
+  "file_sha256": "15956440b27465686eae2abf5895cbc3dab80f934a891bcb2f4f944428e97d60",
+  "record_sha256": "660dceeb8f5762ddd597c849438d37e19e4c339e665043a4f5f02a1ceadba55f",
+  "rule": "grid import identical hour by hour (rounded to 1e-6 kWh) to the day 7 or 14 days earlier"
+ },
+ "note": "A separate check, not the sealed analysis: clean days whose grid import repeats, hour by hour, the day 7 or 14 days earlier are removed from the averages of the sealed run's stored rows; plans and costs are as run, runs are split where a day is removed, and the normalisers are the published ones.",
+ "pooled": {
+  "accuracy": [
+   {
+    "a": "ridge_mae",
+    "b": "naive_mae",
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     -0.017303257303313693,
+     0.0036653397827184574
+    ],
+    "mean": -0.005358265219060266,
+    "reading": "not resolved",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   {
+    "a": "chronos_mae",
+    "b": "ridge_mae",
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     -0.06953738867519223,
+     -0.04520541265067675
+    ],
+    "mean": -0.057233498976760444,
+    "reading": "lower",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   }
+  ],
+  "paired": [
+   {
+    "a": "candidate",
+    "b": "seasonal_naive",
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     0.010268598341383222,
+     0.017142542435498103
+    ],
+    "mean": 0.013494403408650425,
+    "reading": "higher",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   {
+    "a": "candidate_risk_neutral",
+    "b": "seasonal_naive",
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     0.0026923530511907983,
+     0.006894817583309465
+    ],
+    "mean": 0.004876178949772341,
+    "reading": "higher",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   {
+    "a": "candidate",
+    "b": "candidate_risk_neutral",
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     0.005902301633939821,
+     0.012058927617749293
+    ],
+    "mean": 0.008618224458878082,
+    "reading": "higher",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   {
+    "a": "chronos_risk_neutral",
+    "b": "candidate_risk_neutral",
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     -0.023286863267060736,
+     -0.016566220151192596
+    ],
+    "mean": -0.020293296509348857,
+    "reading": "lower",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   {
+    "a": "chronos_risk_neutral",
+    "b": "seasonal_naive",
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     -0.018867449947573264,
+     -0.01141473066716263
+    ],
+    "mean": -0.015417117559576518,
+    "reading": "lower",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   {
+    "a": "chronos",
+    "b": "candidate",
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     -0.01661013717483389,
+     -0.008389812346190427
+    ],
+    "mean": -0.012222721541651117,
+    "reading": "lower",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   }
+  ],
+  "share": {
+   "candidate": {
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     0.21867102844109088,
+     0.29080851952746595
+    ],
+    "mean": 0.24624571712298554,
+    "reading": "higher",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   "candidate_risk_neutral": {
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     0.33697172353186416,
+     0.37869710218006003
+    ],
+    "mean": 0.3452145710136104,
+    "reading": "higher",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   "chronos": {
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     0.3622374711948102,
+     0.43139056473299126
+    ],
+    "mean": 0.3881624744265917,
+    "reading": "higher",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   "chronos_risk_neutral": {
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     0.5646986019945788,
+     0.612391014482159
+    ],
+    "mean": 0.5805566658317629,
+    "reading": "higher",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   "no_battery": {
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     0.0,
+     0.0
+    ],
+    "mean": 0.0,
+    "reading": "not resolved",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   "perfect_foresight": {
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     1.0,
+     1.0
+    ],
+    "mean": 1.0,
+    "reading": "higher",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   },
+   "seasonal_naive": {
+    "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+    "ci95": [
+     0.3934720148386286,
+     0.4387537717757935
+    ],
+    "mean": 0.40313909200928383,
+    "reading": "higher",
+    "sites": [
+     "industrial1",
+     "industrial3"
+    ],
+    "weights": "equal per site"
+   }
+  }
+ },
+ "sites": {
+  "industrial1": {
+   "accuracy": [
+    {
+     "a": "ridge_mae",
+     "b": "naive_mae",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      -0.7509357783548941,
+      0.2705938682414901
+     ],
+     "mean": -0.14037914060356582,
+     "reading": "not resolved",
+     "total": -65.83781694307237
+    },
+    {
+     "a": "chronos_mae",
+     "b": "ridge_mae",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      -2.4333856124122186,
+      -1.6498404259776458
+     ],
+     "mean": -2.2145680133066543,
+     "reading": "lower",
+     "total": -1038.632398240821
+    }
+   ],
+   "forecast": {
+    "chronos_mae_kw": 4.660708052202026,
+    "chronos_mae_share_of_load": 0.13724305676611,
+    "ridge_mae_kw": 6.8752760655086815,
+    "ridge_mae_share_of_load": 0.2024550546339143,
+    "seasonal_naive_mae_kw": 7.015655206112245,
+    "seasonal_naive_mae_share_of_load": 0.20658877469250714
+   },
+   "paired": [
+    {
+     "a": "candidate",
+     "b": "seasonal_naive",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      1.9345277349814172,
+      3.096385287027657
+     ],
+     "mean": 2.5428137934090635,
+     "reading": "higher",
+     "total": 1192.5796691088508
+    },
+    {
+     "a": "candidate_risk_neutral",
+     "b": "seasonal_naive",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      0.791080476687245,
+      1.5529065066149395
+     ],
+     "mean": 1.1715576665778134,
+     "reading": "higher",
+     "total": 549.4605456249944
+    },
+    {
+     "a": "candidate",
+     "b": "candidate_risk_neutral",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      0.9321638141404495,
+      1.7491192594001637
+     ],
+     "mean": 1.37125612683125,
+     "reading": "higher",
+     "total": 643.1191234838562
+    },
+    {
+     "a": "chronos_risk_neutral",
+     "b": "candidate_risk_neutral",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      -4.357336793914033,
+      -2.9121954557952985
+     ],
+     "mean": -3.7010359983842704,
+     "reading": "lower",
+     "total": -1735.7858832422228
+    },
+    {
+     "a": "chronos_risk_neutral",
+     "b": "seasonal_naive",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      -3.2373923006986938,
+      -1.6691135846473613
+     ],
+     "mean": -2.529478331806457,
+     "reading": "lower",
+     "total": -1186.3253376172283
+    },
+    {
+     "a": "chronos",
+     "b": "candidate",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      -2.9263242896010055,
+      -1.5462728479806436
+     ],
+     "mean": -2.263915313023469,
+     "reading": "lower",
+     "total": -1061.7762818080068
+    }
+   ],
+   "removed_target_days": 69,
+   "runs": 12,
+   "share": {
+    "candidate": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      0.14641127798029735,
+      0.23207759042470577
+     ],
+     "value": 0.18310229155862104
+    },
+    "candidate_risk_neutral": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      0.26417129398245326,
+      0.32692026184622447
+     ],
+     "value": 0.2887683255237398
+    },
+    "chronos": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      0.3181544203042772,
+      0.40234390193785496
+     ],
+     "value": 0.3575547134507169
+    },
+    "chronos_risk_neutral": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      0.5484356523666085,
+      0.5996323256413174
+     ],
+     "value": 0.5739621619334495
+    },
+    "no_battery": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      0.0,
+      0.0
+     ],
+     "value": 0.0
+    },
+    "perfect_foresight": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      1.0,
+      1.0
+     ],
+     "value": 1.0
+    },
+    "seasonal_naive": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2026",
+     "ci95": [
+      0.35399659524471533,
+      0.4237107006285953
+     ],
+     "value": 0.379046027673178
+    }
+   },
+   "target_days": 469,
+   "week_copies": {
+    "by_lag": {
+     "14": 29,
+     "7": 51
+    },
+    "clean_days": 80,
+    "solar_identical_too": 40,
+    "target_dates": [
+     "2016-01-05",
+     "2016-01-06",
+     "2016-01-07",
+     "2016-01-08",
+     "2016-01-09",
+     "2016-01-10",
+     "2016-01-11",
+     "2016-01-12",
+     "2016-01-13",
+     "2016-01-15",
+     "2016-01-16",
+     "2016-01-17",
+     "2016-01-18",
+     "2016-01-19",
+     "2016-01-20",
+     "2016-01-21",
+     "2016-01-22",
+     "2016-01-23",
+     "2016-01-24",
+     "2016-01-25",
+     "2016-01-26",
+     "2016-01-27",
+     "2016-01-29",
+     "2016-01-30",
+     "2016-01-31",
+     "2016-02-01",
+     "2016-02-02",
+     "2016-02-03",
+     "2016-02-04",
+     "2016-02-05",
+     "2016-02-06",
+     "2016-02-07",
+     "2016-02-08",
+     "2016-02-09",
+     "2016-02-10",
+     "2016-02-11",
+     "2016-02-12",
+     "2016-02-13",
+     "2016-02-14",
+     "2016-02-15",
+     "2016-02-18",
+     "2016-02-20",
+     "2016-02-21",
+     "2016-02-25",
+     "2016-02-26",
+     "2016-02-27",
+     "2016-02-28",
+     "2016-02-29",
+     "2016-03-01",
+     "2016-04-14",
+     "2016-04-15",
+     "2016-04-16",
+     "2016-04-17",
+     "2016-04-18",
+     "2016-04-19",
+     "2016-04-20",
+     "2016-04-21",
+     "2016-04-22",
+     "2016-04-23",
+     "2016-04-24",
+     "2016-04-25",
+     "2016-04-27",
+     "2016-04-28",
+     "2016-04-29",
+     "2016-04-30",
+     "2016-05-01",
+     "2016-05-02",
+     "2016-06-01",
+     "2016-06-02"
+    ],
+    "target_days": 69
+   }
+  },
+  "industrial3": {
+   "accuracy": [
+    {
+     "a": "ridge_mae",
+     "b": "naive_mae",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      -1.816739691200805,
+      0.6341524077088344
+     ],
+     "mean": -0.5462948645694883,
+     "reading": "not resolved",
+     "total": -146.95331856919236
+    },
+    {
+     "a": "chronos_mae",
+     "b": "ridge_mae",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      -6.467727150498622,
+      -2.9033613728283427
+     ],
+     "mean": -4.087578412539284,
+     "reading": "lower",
+     "total": -1099.5585929730676
+    }
+   ],
+   "forecast": {
+    "chronos_mae_kw": 12.528347138008959,
+    "chronos_mae_share_of_load": 0.1509656028771261,
+    "ridge_mae_kw": 16.615925550548248,
+    "ridge_mae_share_of_load": 0.20022060296284278,
+    "seasonal_naive_mae_kw": 17.16222041511773,
+    "seasonal_naive_mae_share_of_load": 0.20680341334237035
+   },
+   "paired": [
+    {
+     "a": "candidate",
+     "b": "seasonal_naive",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      2.3119276393536348,
+      7.047599787179778
+     ],
+     "mean": 4.367843523585095,
+     "reading": "higher",
+     "total": 1174.9499078443905
+    },
+    {
+     "a": "candidate_risk_neutral",
+     "b": "seasonal_naive",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      -0.47136670991552493,
+      2.2023896947798947
+     ],
+     "mean": 0.9478000235295907,
+     "reading": "not resolved",
+     "total": 254.9582063294599
+    },
+    {
+     "a": "candidate",
+     "b": "candidate_risk_neutral",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      1.5883878543469705,
+      6.012412504272872
+     ],
+     "mean": 3.4200435000555047,
+     "reading": "higher",
+     "total": 919.9917015149308
+    },
+    {
+     "a": "chronos_risk_neutral",
+     "b": "candidate_risk_neutral",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      -8.796487578633858,
+      -5.040275200659727
+     ],
+     "mean": -6.875187699962519,
+     "reading": "lower",
+     "total": -1849.4254912899178
+    },
+    {
+     "a": "chronos_risk_neutral",
+     "b": "seasonal_naive",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      -8.233387167545853,
+      -3.943370208667046
+     ],
+     "mean": -5.927387676432928,
+     "reading": "lower",
+     "total": -1594.4672849604576
+    },
+    {
+     "a": "chronos",
+     "b": "candidate",
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      -7.216503022959249,
+      -1.805597644008271
+     ],
+     "mean": -4.0542029823230585,
+     "reading": "lower",
+     "total": -1090.5806022449028
+    }
+   ],
+   "removed_target_days": 4,
+   "runs": 20,
+   "share": {
+    "candidate": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      0.25665840854986816,
+      0.37568328551644636
+     ],
+     "value": 0.30938914268735
+    },
+    "candidate_risk_neutral": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      0.3921107326178641,
+      0.4469118965044906
+     ],
+     "value": 0.401660816503481
+    },
+    "chronos": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      0.3773033558643578,
+      0.48798528068895497
+     ],
+     "value": 0.4187702354024665
+    },
+    "chronos_risk_neutral": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      0.5646947362137227,
+      0.6453496342998761
+     ],
+     "value": 0.5871511697300763
+    },
+    "no_battery": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      0.0,
+      0.0
+     ],
+     "value": 0.0
+    },
+    "perfect_foresight": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      1.0,
+      1.0
+     ],
+     "value": 1.0
+    },
+    "seasonal_naive": {
+     "bootstrap": "within-run blocks of 7 days, 4000 draws, seed 2027",
+     "ci95": [
+      0.4162249171234959,
+      0.47095781028432937
+     ],
+     "value": 0.42723215634538964
+    }
+   },
+   "target_days": 269,
+   "week_copies": {
+    "by_lag": {
+     "14": 3,
+     "7": 6
+    },
+    "clean_days": 9,
+    "solar_identical_too": 0,
+    "target_dates": [
+     "2016-06-04",
+     "2016-06-05",
+     "2017-02-15",
+     "2017-03-23"
+    ],
+    "target_days": 4
+   }
+  }
+ }
+}

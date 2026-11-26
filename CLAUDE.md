@@ -15,7 +15,7 @@ mizan doctor                      # reports SQLite; follow the README section if
 ## Commands
 
 ```bash
-python -m unittest discover -s tests -v                       # 231 tests (4 HF loader tests skip without torch)
+python -m unittest discover -s tests -v                       # 289 tests (4 HF loader tests skip without torch)
 python -m mizan run sanad examples/sanad.json --out /tmp/sanad.json
 python -m mizan verify /tmp/sanad.json
 python -m mizan explain /tmp/sanad.json --lang ar
@@ -27,6 +27,8 @@ python scripts/build_site.py                                   # GitHub Pages si
 python scripts/evaluate_hf.py --models var/hf --out reports/hf --repeat  # in .venv-hf only; rewrites the published HF evidence
 python scripts/fetch_visa.py --out var/visa                     # VisA (CC BY 4.0), verified against reports/visa/manifest.json
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv-hf/bin/python scripts/evaluate_visa.py --data var/visa --models var/hf --out /tmp/visa --repeat --seal 13827ee6b1d5105c191eff3e9658d67f1ca44e62 --reason check  # ~76 min; logs to reports/visa/runs.json
+python scripts/fetch_opsd.py --out var/opsd                     # OPSD household 60-min file (CC BY 4.0), pinned size and SHA-256
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv-hf/bin/python scripts/evaluate_opsd.py --data var/opsd --models var/hf --out /tmp/opsd --repeat --seal 72e51d5099d9c5ebbfeb67ee4a0ca534fae2ce30 --reason check  # ~9 min; logs to reports/opsd/runs.json
 ```
 
 ## Layout
@@ -48,7 +50,9 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv-hf/bin/python scripts/evaluate_vi
 ## Invariants: never break these
 
 - **Signed exhibit data is frozen.** Do not regenerate or re-sign `reports/demo/demo_results.json`, `reports/demo/MIZAN_Demo.html`, `mizan/web/index.html` or `spaces/*/index.html`. Never run `python -m mizan demo` with `--out reports/demo`: it creates a new key and breaks the pinned fingerprint `9a627609…df436`. Rebuild pages only with `scripts/build_exhibit.py` and `scripts/build_spaces.py` from the existing signed data.
-- **No invented numbers.** Every figure in the README, docs or posts must be traceable to a file in `reports/`. Bundled datasets are generated fixtures; never describe them as real. The one exception is VisA (`reports/visa/`): real public images under CC BY 4.0, which must be named as such and attributed, and never presented as MIZAN's own data or as an industrial certificate.
+- **No invented numbers.** Every figure in the README, docs or posts must be traceable to a file in `reports/`. Bundled datasets are generated fixtures; never describe them as real. There are two exceptions, both real public data under CC BY 4.0 that must be named as such and attributed, and never presented as MIZAN's own data:
+  - **VisA** (`reports/visa/`): real public images. Never present them as an industrial certificate.
+  - **The Open Power System Data household package** (`reports/opsd/`): two real business sites. Their load is reconstructed as grid import plus solar, and must be described that way.
 - **Agent versus operator.** AI agents (MCP) may submit, explain and verify. Approving documents, assigning authority, changing thresholds, promotion, rollback, upgrade, revocation, backup, restore and anchoring stay with the human operator. Do not add MCP tools for them.
 - **Minimal fixes.** Change engine, store and verification code only to fix a reproduced failure, with the smallest change and a test that proves it.
 - **The presentation layer may change.** Edit `mizan/web/template.html` or `site/landing.html`, then rebuild with `scripts/build_exhibit.py`, `scripts/build_spaces.py` and `scripts/build_site.py`. Keep the contracts in `scripts/check_exhibit_logic.mjs` and `scripts/check_exhibits.py` (button labels, two canvases on RASID, only the 96 px part images on the exhibit, the `#trust` texts), keep the code between `/*VERIFY:BEGIN*/` and `/*VERIFY:END*/` unchanged, and keep zero external requests. The intro page's figures come from `reports/` through `build_site.py`; never type them by hand.

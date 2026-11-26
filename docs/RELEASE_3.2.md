@@ -1,6 +1,16 @@
-# MIZAN 3.2 (unreleased) | BASIRA on real images
+# MIZAN 3.2 (unreleased) | Real data: BASIRA on images, RASID on load
 
-Prepared 26 November 2026 on the `visa-evaluation` branch; not yet released. Builds on 3.1.
+Prepared 26 November 2026; not yet released. Builds on 3.1. 3.2 has two parts:
+- **Part 1** (below, merged from the `visa-evaluation` branch) runs BASIRA on real photographs, the public VisA dataset.
+- **Part 2** ([RASID on real load](#part-2--rasid-on-real-load-opsd), from the `rasid-opsd` branch) runs RASID on the real load and solar of two business sites from the Open Power System Data household package.
+
+Both parts keep the same discipline:
+- the protocol is sealed in code before the real data is scored;
+- a fidelity gate on the published results must pass first;
+- the whole run is repeated in a second process;
+- every figure is published with its interval.
+
+## Part 1 · BASIRA on real images (VisA)
 
 Until 3.1, every BASIRA figure came from generated rings. 3.2 runs the unchanged engine on real photographs, the public VisA dataset, and asks two questions: **does the false-alert promise of BASIRA's calibration hold on real images, and how many real defects does it catch at that promise?** The answers are published as they came out. No check found a departure from the promise, though the check flags only clear departures. Detection is low: at the 5% target with the full bank, the shipped descriptor catches 26.8% of defective images and DINOv2-small, at its native colour input, 38.6%. Most defects pass. The deployed engine, its profiles, the signed exhibit and the pinned key are unchanged.
 
@@ -126,3 +136,139 @@ The results page shows four images, chosen by a fixed rule (shipped descriptor, 
 ## Reproduction
 
 The recipe, timings, memory and disk use are in [`docs/TECHNICAL_GUIDE.md`](TECHNICAL_GUIDE.md#basira-on-real-images-reportsvisa).
+
+## Part 2 · RASID on real load (OPSD)
+
+Until now, every RASID figure came from a generated commercial site over 60 days, and 3.0 stated the limit: 60 generated days cannot settle the forecast's value under RASID's illustrative tariff. Part 2 runs RASID's unchanged forecaster, planner and independent verifier on two real business sites. It measures how well each policy plans, **without currency**: the owner chose this over euros, which would need a real tariff and a battery cost. All figures below are in `reports/opsd/rasid.json`; the run log is `reports/opsd/runs.json`.
+
+**The answers, as they came out:**
+- **Planned and verified:** 811 real days were planned, and the independent verifier accepted every plan, 5,677 of 5,677.
+- **Forecasting:** on this real load, the shipped ridge forecaster's error is not resolved from that of a seasonal baseline that repeats last week's load, at either site. Chronos-Bolt-tiny, the 3.1 pin used zero-shot, cuts the error from 19.4% to 14.0% of mean load (both sites weighted equally), a resolved difference.
+- **Planning:** planning on Chronos's quantiles without the risk weight captures 58.0% of the battery's achievable value (95% interval 56.3% to 61.1%). The shipped risk-aware ridge plan captures 24.9% (22.7% to 29.7%), and costs more than simply planning on the seasonal baseline, a resolved difference.
+
+The engine, its settings and the signed exhibit are unchanged.
+
+### Data
+
+Open Power System Data, *Data Package Household Data*, version 2020-04-15, CC BY 4.0, with primary data from the CoSSMic project in Konstanz, Germany. Licence, source and changes: [`docs/DATA_LICENSES.md`](DATA_LICENSES.md).
+- **The file:** the 60-minute file (15,654,559 bytes, SHA-256 `15956440…428e97d60`), downloaded by `scripts/fetch_opsd.py` into the git-ignored `var/opsd/` and refused unless both values match.
+- **The two business sites:** a warehouse (`industrial1`) and a research-institute building (`industrial3`). The homes, schools and a crafts business in the package were inspected and set aside, because of small size, missing solar, short coverage, their own battery or unmetered export.
+- **Reconstructing load:** the values are cumulative meter readings, each the reading at the end of the hour its row is labelled with. Solar at both sites peaks around Konstanz's solar noon only under that reading. Load is reconstructed as grid import plus solar. Neither site has an export meter, so this holds only if neither ever exports. A gate checks that: no sunny hour at either site has grid import near zero (0 of 3,432 and 0 of 2,622).
+- **What was looked at before the seal:** coverage, flags, filled days, export, alignment and day counts. No forecast, plan or cost was computed on site data before the seal.
+
+### A sealed protocol
+
+`mizan.opsd.PROTOCOL` holds every choice (spec rules 1–12). Its digest, `e24cc97b…6ad78b`, was sealed in commit `72e51d50` before any site day was forecast, and a run refuses a protocol whose digest has changed.
+- **Clean days:** every hour metered, no hour flagged as filled, not a copy of the day before, and no straight-line fill.
+- **Planned days:** a 24-hour clean day whose 7 previous days are clean. The two daylight-saving days at each site are excluded and counted, because Chronos forecasts exactly 24 hours.
+- **The battery:** RASID's settings scaled by each site's mean load over its first 28 clean days:
+  - warehouse: 27.1 kWh and 6.8 kW (scale 0.338);
+  - research building: 92.5 kWh and 23.1 kW (scale 1.156).
+
+  The grid limit is set so it never binds. Prices, risk weight and efficiencies are unchanged, and time-of-use prices apply by local hour.
+- **Carried state:** each policy carries its charge and month-to-date peak. Both start afresh after any gap.
+- **Refusals:** a day where any policy's planner input is refused, no plan is found or a plan is rejected is dropped for every policy, and counted.
+- **Intervals:** a bootstrap of 7-day blocks that never span a gap, with 4,000 draws. The seeds are 2026 for the warehouse and 2027 for the research building (seed plus site index); see Disclosures. Pooled results weight both sites equally and are unit-free.
+
+### The fidelity gate
+
+Before any site day, the new day loop ran RASID's generated site and had to reproduce:
+- `reports/evaluation/rasid.json`: 253 checks;
+- the Chronos side of `reports/hf/rasid.json`: 8 checks.
+
+Both passed with 0 mismatches. One real run was made, from commit `a3f37c3a` with a clean tree. It took 505.9 s including the repeat in a second Python process, which matched with no differing value (peak resident memory 607.2 MiB).
+
+### Days
+
+| | Warehouse | Research building |
+|---|---|---|
+| Clean days | 601 | 443 |
+| Daylight-saving days excluded | 2 | 2 |
+| Fewer than 7 clean days before | 52 | 165 |
+| Refused by the ridge forecaster (too little history) | 7 | 3 |
+| Dropped by a refusal | 2 | 0 |
+| **Planned** | **538** in 8 runs | **273** in 19 runs |
+
+The 2 dropped days (6 and 7 August 2016, warehouse) are days where the planner's input check refused a Chronos scenario (`INPUT_RANGE`).
+
+### Forecast accuracy on load
+
+| | Warehouse | Research building |
+|---|---|---|
+| Mean load | 34.0 kW | 83.0 kW |
+| Ridge (shipped) | 6.414 kW · 18.9% | 16.548 kW · 19.9% |
+| Seasonal baseline | 6.383 kW · 18.8% | 16.954 kW · 20.4% |
+| Chronos median | 4.377 kW · 12.9% | 12.539 kW · 15.1% |
+| 80% coverage, ridge / Chronos | 78.0% / 79.0% | 73.8% / 74.5% |
+
+Paired daily differences:
+- **Ridge − baseline:** +0.031 kW (−0.490 to +0.402) at the warehouse and −0.405 kW (−1.656 to +0.701) at the research building. Neither is resolved.
+- **Chronos − ridge:** −2.037 kW (−2.233 to −1.526) and −4.009 kW (−6.246 to −2.618). Both are resolved.
+- **Pooled, as a share of mean load:** ridge − baseline −0.2 points (−1.3 to +0.7), not resolved; Chronos − ridge −5.4 points (−6.6 to −4.1), resolved.
+
+### Planning quality
+
+Share of the battery's achievable value, that is, the part of the hindsight plan's improvement over no battery that a policy captures (95% interval):
+
+| Policy | Warehouse | Research building | Both sites |
+|---|---|---|---|
+| Ridge, risk-aware (shipped) | 19.3% (16.3% to 24.5%) | 30.5% (25.7% to 37.5%) | 24.9% (22.7% to 29.7%) |
+| Ridge, risk-neutral | 29.6% (27.6% to 33.6%) | 39.8% (39.1% to 44.4%) | 34.7% (34.2% to 38.2%) |
+| Seasonal baseline | 40.1% (37.5% to 44.7%) | 43.1% (41.8% to 47.3%) | 41.6% (40.5% to 45.0%) |
+| Chronos, risk-aware | 35.6% (32.2% to 40.4%) | 41.4% (36.8% to 48.1%) | 38.5% (35.9% to 42.9%) |
+| Chronos, risk-neutral | 57.6% (55.3% to 60.3%) | 58.4% (55.4% to 63.8%) | 58.0% (56.3% to 61.1%) |
+
+Paired daily cost differences, pooled as a share of each site's mean daily cost without a battery:
+
+| Comparison | Both sites | Reading |
+|---|---|---|
+| Ridge risk-aware − seasonal baseline | +1.4% (+1.0% to +1.7%) | costlier, resolved |
+| Ridge risk-neutral − seasonal baseline | +0.6% (+0.3% to +0.7%) | costlier, resolved |
+| Ridge risk-aware − ridge risk-neutral | +0.8% (+0.5% to +1.1%) | costlier, resolved |
+| Chronos risk-neutral − ridge risk-neutral | −1.9% (−2.2% to −1.6%) | cheaper, resolved |
+| Chronos risk-neutral − seasonal baseline | −1.4% (−1.7% to −1.0%) | cheaper, resolved |
+| Chronos risk-aware − ridge risk-aware | −1.1% (−1.5% to −0.7%) | cheaper, resolved |
+
+Every comparison is resolved in the same direction at each site except one: ridge risk-neutral − seasonal baseline at the research building, +1.228 units a day (−0.304 to +2.317), is not resolved. The page `report/opsd/` lists every per-site figure.
+
+**What this says.**
+- **The shipped forecaster:** on real load, the shipped ridge forecaster's error is not resolved from last week's load, and its plans capture less of the battery's value than plans built on that baseline. The risk weight costs more again, a resolved difference as in 3.0.
+- **The forecast's value:** 3.0's 60 generated days could not resolve the ridge forecast's value under the illustrative tariff. These real days resolve it for the warehouse and for both sites pooled, and it is negative: risk-neutral plans on the ridge forecast cost more than plans on the seasonal baseline (pooled +0.6% of the daily cost without a battery, 95% interval +0.3% to +0.7%). It is not resolved at the research building.
+- **A pretrained forecaster changes the picture:** Chronos is more accurate at both sites, and planning on its quantiles without the risk weight captures the most value of the six forecast-based policies. As in 3.1, the Chronos policies differ from the ridge ones in their scenario rule as well as in the forecaster. The deployed default is still the ridge forecaster with the risk weight. Changing it would be an operator's decision, a signed upgrade, and is not made here.
+
+### Pages and site
+
+- `reports/opsd/index.html`, built by `scripts/build_opsd_report.py` and served at `report/opsd/`. It refuses a record whose gate failed, whose repeat is missing or differs, or that is a quick run.
+- The evaluation report links to it, and `scripts/check_exhibits.py` checks it in Chromium: readings match the stored ones, no overflow at 390 px, comparison tables fit, zero external requests, and contrast in light and dark.
+- The introduction gains a bilingual block, "Real load: RASID on two business sites". `scripts/build_site.py` reads its figures from the record. It stops the build unless the run is the sealed, gated, second-process repeat of a full run on exactly these two sites, with day counts and readings consistent with the record. Every phrase ("a resolved difference", "costs more than") comes from an interval's sign.
+
+### Disclosures
+
+- **The seal fixes the protocol, not the code.** The day loop, the statistics and the runner were finished after the seal (`72e51d50`) and before the one real run (from `a3f37c3a`).
+- **After the real run, no protocol, harness or runner code changed.** Only presentation changed, and a separate check was added (below). The page's "plans verified" first counted the 2 dropped Chronos days as planned; it now counts only plans made, and shows dropped days separately.
+- **What was inspected before the seal:** the target-day counts and the data checks above. The clean-day and candidate counts match the sealed run's own exactly (601 and 443 clean days, 547 and 276 candidates). The design's pre-seal sunny-hour counts came from the earlier, one-hour-off alignment and differ from the sealed gate's.
+- **Copies of earlier weeks.** Rule 3 drops a day that copies the day before. The package also fills gaps with data from earlier days without always flagging them, and some clean days repeat the day 7 or 14 days earlier exactly, hour by hour.
+  - **Warehouse:** 80 clean days, 69 of them planned, 40 with solar identical too. On these days the seasonal baseline sees the actual load.
+  - **Research building:** 9 clean days, 4 planned.
+  - **A separate check without them:** `scripts/opsd_copy_check.py` removes these days from the sealed run's stored rows and splits runs where they are removed; plans and costs are as run, so this is not a re-planning. Its results are in `reports/opsd/copies.json`.
+    - The warehouse's baseline error rises from 6.383 to 7.016 kW, and ridge's from 6.414 to 6.875 kW.
+    - Pooled, ridge − baseline becomes −0.5 points of mean load (−1.7 to +0.4), still not resolved.
+    - The baseline's pooled share falls from 41.6% to 40.3%.
+    - **No reading of the sealed analysis changes.**
+  - **For a future protocol:** compare each day with the days one and two weeks earlier too.
+- **Bootstrap seeds.** Each site's draws use seed 2026 plus its index (2026 for the warehouse, 2027 for the research building), and the pooled draws reuse them. This was set before the run (ruling R12), but the sealed protocol text and the record's bootstrap labels say "seed 2026" for both sites.
+- **Sizing window.** The first 28 clean days that size each battery overlap the first planned days, so sizing is not strictly from before the evaluation. The effect is the same for every policy.
+
+### Limits
+
+- **Two sites in one city, 2015–2017.** This is not evidence about businesses in general.
+- **The load is reconstructed** (grid import plus solar). The no-export check covers clean hours at hourly resolution: it found no sunny clean hour with near-zero import.
+- **The tariff is RASID's illustrative one,** unchanged. Only the battery is scaled to each site, and it is hypothetical. No currency, bill or payback follows.
+- **Within-run blocks.** Blocks never span a gap, so a run's first and last days fall in fewer blocks than its middle days. A percentile interval can therefore sit off its point estimate, more so at the research building, whose runs are short.
+- **Meter resolution.** Meters count in steps of a fraction of a kWh, so the rule against four identical hours can also drop a genuinely steady day.
+- **CPU only, Chronos-Bolt-tiny zero-shot,** with no tuning.
+- **Many intervals,** with no multiplicity adjustment. The share's intervals come from the same block bootstrap.
+
+### Reproduction
+
+The recipe, timings and disk use are in [`docs/TECHNICAL_GUIDE.md`](TECHNICAL_GUIDE.md#rasid-on-real-load-reportsopsd).

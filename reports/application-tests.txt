@@ -1,15 +1,15 @@
 # Release 3.2.0 (unreleased) application tests — local run (26 November 2026)
 # Python 3.12.16 (uv) · SQLite 3.53.1 · NumPy 2.3.5 · SciPy 1.17.0 · FastAPI 0.141.1 · httpx 0.28.1 · PyMuPDF 1.26.6
 # Ubuntu 26.04.1 LTS under WSL2 (kernel 6.18.58.1) on Windows 11, Intel Core i7-13645HX, x86_64
-# Main environment (.venv, every dependency in requirements.txt, no torch): 231 tests, 227 passed, 4 skipped.
+# Main environment (.venv, every dependency in requirements.txt, no torch): 289 tests, 285 passed, 4 skipped.
 # The 4 skips are the Hugging Face loader tests (tests/test_hf_models.py LoaderTests), which need torch, transformers,
 # chronos-forecasting and MIZAN_HF_MODELS. They were run in the optional .venv-hf (requirements-hf.txt: torch 2.15.0+cpu,
 # transformers 4.57.6, chronos-forecasting 2.3.2, Python 3.12.16) against the verified checkpoints:
 #   MIZAN_HF_MODELS=var/hf .venv-hf/bin/python -m unittest tests.test_hf_models.LoaderTests -v
-# .venv-hf result: Ran 4 tests in 2.506s: OK (test_chronos_quantiles, test_dinov2_grid, test_e5_normalised, test_identity_matches_pin)
-# Python 3.13.18 result (uv, SQLite 3.53.1, the same pins, the same 4 loader tests skipped): Ran 231 tests in 63.272s: OK (skipped=4)
+# .venv-hf result: Ran 4 tests in 2.269s: OK (test_chronos_quantiles, test_dinov2_grid, test_e5_normalised, test_identity_matches_pin)
+# Python 3.13.18 result (uv, SQLite 3.53.1, the same pins, the same 4 loader tests skipped): Ran 289 tests in 91.271s: OK (skipped=4)
 # MCP conformance used the official mcp client 2.3.0.
-# The VisA tests (tests/test_visa.py, tests/test_visa_evaluation.py) use a generated two-class stand-in tree; no VisA image is read.
+# The VisA and OPSD tests (tests/test_visa*.py, tests/test_opsd*.py) use generated stand-ins; no VisA image and no OPSD file is read.
 # Previous records: 3.1.0 (25 November 2026), 172 tests, 168 passed and 4 skipped; 3.0 local verification run (21 November 2026),
 # 102 tests, all passed (reports/local-verification.md).
 # Command: python -m unittest discover -s tests -v
@@ -46,6 +46,15 @@ test_crash_on_either_side_of_publish_commit (test_broker.ProcessCrashTests.test_
 test_every_policy_is_solved_verified_and_summarized (test_evaluation.DecisionQualityTests.test_every_policy_is_solved_verified_and_summarized) ... ok
 test_paired_comparison_interval_brackets_its_estimate (test_evaluation.DecisionQualityTests.test_paired_comparison_interval_brackets_its_estimate) ... ok
 test_tail_mean_uses_the_worst_share (test_evaluation.DecisionQualityTests.test_tail_mean_uses_the_worst_share) ... ok
+test_only_the_battery_is_scaled (test_evaluation.OpsdPageReviewTests.test_only_the_battery_is_scaled) ... ok
+test_pooled_accuracy_is_on_the_page (test_evaluation.OpsdPageReviewTests.test_pooled_accuracy_is_on_the_page) ... ok
+test_the_copy_check_travels_with_the_page (test_evaluation.OpsdPageReviewTests.test_the_copy_check_travels_with_the_page) ... ok
+test_no_protocol_number_is_typed_into_the_page (test_evaluation.OpsdPageTests.test_no_protocol_number_is_typed_into_the_page) ... ok
+test_opsd_attribution_and_wording (test_evaluation.OpsdPageTests.test_opsd_attribution_and_wording) ... ok
+test_opsd_build_refuses_a_failed_gate_an_unrepeated_run_or_a_quick_record (test_evaluation.OpsdPageTests.test_opsd_build_refuses_a_failed_gate_an_unrepeated_run_or_a_quick_record) ... ok
+test_opsd_page_embeds_the_source_counts (test_evaluation.OpsdPageTests.test_opsd_page_embeds_the_source_counts) ... ok
+test_opsd_page_is_small_latin_and_offline (test_evaluation.OpsdPageTests.test_opsd_page_is_small_latin_and_offline) ... ok
+test_report_links_the_opsd_page_only_when_it_exists (test_evaluation.ReportOpsdLinkTests.test_report_links_the_opsd_page_only_when_it_exists) ... ok
 test_intervals_derived_from_other_evidence_stop_the_build (test_evaluation.ReportPageTests.test_intervals_derived_from_other_evidence_stop_the_build) ... ok
 test_report_embeds_only_summary_data_and_escapes_markup (test_evaluation.ReportPageTests.test_report_embeds_only_summary_data_and_escapes_markup) ... ok
 test_report_summarizes_the_hugging_face_evaluation (test_evaluation.ReportPageTests.test_report_summarizes_the_hugging_face_evaluation) ... ok
@@ -123,6 +132,50 @@ test_dinov2_grid (test_hf_models.LoaderTests.test_dinov2_grid) ... skipped 'opti
 test_e5_normalised (test_hf_models.LoaderTests.test_e5_normalised) ... skipped 'optional HF runtime'
 test_identity_matches_pin (test_hf_models.LoaderTests.test_identity_matches_pin) ... skipped 'optional HF runtime'
 test_changed_offline_companion_and_rewritten_manifest (test_import_security.ImportSecurityTests.test_changed_offline_companion_and_rewritten_manifest) ... ok
+test_copied_and_straight_line_days_are_unclean (test_opsd.DataRuleTests.test_copied_and_straight_line_days_are_unclean) ... ok
+test_dst_day_is_clean_but_not_a_target (test_opsd.DataRuleTests.test_dst_day_is_clean_but_not_a_target) ... ok
+test_export_gate_fails_on_an_export_hour (test_opsd.DataRuleTests.test_export_gate_fails_on_an_export_hour) ... ok
+test_flagged_hours_are_missing (test_opsd.DataRuleTests.test_flagged_hours_are_missing) ... ok
+test_history_rows_respect_the_window_and_vintage (test_opsd.DataRuleTests.test_history_rows_respect_the_window_and_vintage) ... ok
+test_hourly_energy_is_the_reading_minus_the_previous_one (test_opsd.DataRuleTests.test_hourly_energy_is_the_reading_minus_the_previous_one) ... ok
+test_negative_step_and_missing_row_unclean_the_day (test_opsd.DataRuleTests.test_negative_step_and_missing_row_unclean_the_day) ... ok
+test_site_base_scales_the_generated_settings (test_opsd.DataRuleTests.test_site_base_scales_the_generated_settings) ... ok
+test_fetch_accepts_the_pinned_file (test_opsd.FetchTests.test_fetch_accepts_the_pinned_file) ... ok
+test_fetch_refuses_a_changed_file (test_opsd.FetchTests.test_fetch_refuses_a_changed_file) ... ok
+test_pinned_identity_is_the_approved_file (test_opsd.FetchTests.test_pinned_identity_is_the_approved_file) ... ok
+test_protocol_carries_the_spec_values (test_opsd.ProtocolTests.test_protocol_carries_the_spec_values) ... ok
+test_protocol_digest_is_sealed (test_opsd.ProtocolTests.test_protocol_digest_is_sealed) ... ok
+test_runs_split_where_days_are_removed (test_opsd_copies.SensitivityTests.test_runs_split_where_days_are_removed) ... ok
+test_sensitivity_without_removed_days (test_opsd_copies.SensitivityTests.test_sensitivity_without_removed_days) ... ok
+test_a_day_that_repeats_one_or_two_weeks_earlier_is_found (test_opsd_copies.WeekCopyTests.test_a_day_that_repeats_one_or_two_weeks_earlier_is_found) ... ok
+test_the_previous_day_rule_is_left_to_the_sealed_check (test_opsd_copies.WeekCopyTests.test_the_previous_day_rule_is_left_to_the_sealed_check) ... ok
+test_day_problem_equals_the_shipped_problem_at_scale_one (test_opsd_evaluation.HarnessTests.test_day_problem_equals_the_shipped_problem_at_scale_one) ... ok
+test_generated_gate_fails_closed (test_opsd_evaluation.HarnessTests.test_generated_gate_fails_closed) ... ok
+test_month_start_resets_only_the_peak (test_opsd_evaluation.HarnessTests.test_month_start_resets_only_the_peak) ... ok
+test_plan_days_reproduces_rasid_hf_with_the_same_forecaster (test_opsd_evaluation.HarnessTests.test_plan_days_reproduces_rasid_hf_with_the_same_forecaster) ... ok
+test_refusal_drops_the_day_for_all_and_restarts_the_run (test_opsd_evaluation.HarnessTests.test_refusal_drops_the_day_for_all_and_restarts_the_run) ... ok
+test_ridge_refusal_is_counted_not_fatal (test_opsd_evaluation.HarnessTests.test_ridge_refusal_is_counted_not_fatal) ... ok
+test_export_gate_stops_before_forecasting (test_opsd_evaluation.RecordTests.test_export_gate_stops_before_forecasting) ... ok
+test_no_currency_in_notes (test_opsd_evaluation.RecordTests.test_no_currency_in_notes) ... ok
+test_pooled_uses_fixed_normalisers (test_opsd_evaluation.RecordTests.test_pooled_uses_fixed_normalisers) ... ok
+test_record_shape (test_opsd_evaluation.RecordTests.test_record_shape) ... ok
+test_a_changed_file_is_refused_before_parsing (test_opsd_evaluation.RunnerTests.test_a_changed_file_is_refused_before_parsing) ... ok
+test_a_crash_after_the_start_leaves_the_started_entry (test_opsd_evaluation.RunnerTests.test_a_crash_after_the_start_leaves_the_started_entry) ... ok
+test_a_stub_run_writes_a_gated_repeated_record (test_opsd_evaluation.RunnerTests.test_a_stub_run_writes_a_gated_repeated_record) ... ok
+test_child_mode_is_only_the_repeat_run_of_a_parent (test_opsd_evaluation.RunnerTests.test_child_mode_is_only_the_repeat_run_of_a_parent) ... ok
+test_evidence_dir_needs_repeat (test_opsd_evaluation.RunnerTests.test_evidence_dir_needs_repeat) ... ok
+test_failed_gate_writes_nothing_and_exits_2 (test_opsd_evaluation.RunnerTests.test_failed_gate_writes_nothing_and_exits_2) ... ok
+test_real_run_requires_seal_and_matching_digest (test_opsd_evaluation.RunnerTests.test_real_run_requires_seal_and_matching_digest) ... ok
+test_the_repeat_run_names_its_folder_to_the_child (test_opsd_evaluation.RunnerTests.test_the_repeat_run_names_its_folder_to_the_child) ... ok
+test_the_seal_is_the_commit_that_introduces_the_digest (test_opsd_evaluation.RunnerTests.test_the_seal_is_the_commit_that_introduces_the_digest) ... ok
+test_day_problem_takes_the_terminal_charge_from_the_site (test_opsd_evaluation.ScaledProblemTests.test_day_problem_takes_the_terminal_charge_from_the_site) ... ok
+test_a_site_without_target_days_is_refused (test_opsd_evaluation.StatisticsTests.test_a_site_without_target_days_is_refused) ... ok
+test_blocks_never_span_a_gap (test_opsd_evaluation.StatisticsTests.test_blocks_never_span_a_gap) ... ok
+test_draws_are_reproducible (test_opsd_evaluation.StatisticsTests.test_draws_are_reproducible) ... ok
+test_paired_reading_follows_the_interval (test_opsd_evaluation.StatisticsTests.test_paired_reading_follows_the_interval) ... ok
+test_pooled_weights_sites_equally (test_opsd_evaluation.StatisticsTests.test_pooled_weights_sites_equally) ... ok
+test_share_of_value_matches_hand_arithmetic (test_opsd_evaluation.StatisticsTests.test_share_of_value_matches_hand_arithmetic) ... ok
+test_short_runs_are_whole_blocks (test_opsd_evaluation.StatisticsTests.test_short_runs_are_whole_blocks) ... ok
 test_constraint_mutations_and_stale_gap (test_products.EnergyTests.test_constraint_mutations_and_stale_gap) ... ok
 test_fractional_tail_negative_costs_and_bad_beta (test_products.EnergyTests.test_fractional_tail_negative_costs_and_bad_beta) ... ok
 test_irregular_quantile_quadrature_and_nan (test_products.EnergyTests.test_irregular_quantile_quadrature_and_nan) ... ok
@@ -189,6 +242,11 @@ test_exchangeability_phrase_follows_the_verdict (test_site.RealImageFactsTests.t
 test_facts_read_the_real_image_evaluation (test_site.RealImageFactsTests.test_facts_read_the_real_image_evaluation) ... ok
 test_landing_shows_the_real_image_block_in_both_languages (test_site.RealImageFactsTests.test_landing_shows_the_real_image_block_in_both_languages) ... ok
 test_wording_that_no_longer_matches_the_record_stops_the_build (test_site.RealImageFactsTests.test_wording_that_no_longer_matches_the_record_stops_the_build) ... ok
+test_facts_read_the_real_load_evaluation (test_site.RealLoadFactsTests.test_facts_read_the_real_load_evaluation) ... ok
+test_landing_shows_the_real_load_block_in_both_languages (test_site.RealLoadFactsTests.test_landing_shows_the_real_load_block_in_both_languages) ... ok
+test_phrases_follow_the_interval (test_site.RealLoadFactsTests.test_phrases_follow_the_interval) ... ok
+test_ridge_against_the_baseline_names_its_direction_when_resolved (test_site.RealLoadFactsTests.test_ridge_against_the_baseline_names_its_direction_when_resolved) ... ok
+test_wording_that_no_longer_matches_the_record_stops_the_build (test_site.RealLoadFactsTests.test_wording_that_no_longer_matches_the_record_stops_the_build) ... ok
 test_extraction_refuses_a_member_that_escapes_and_leaves_nothing (test_visa.FetchTests.test_extraction_refuses_a_member_that_escapes_and_leaves_nothing) ... ok
 test_fetch_refuses_wrong_size_and_keeps_no_partial (test_visa.FetchTests.test_fetch_refuses_wrong_size_and_keeps_no_partial) ... ok
 test_fetch_writes_then_verifies_the_manifest (test_visa.FetchTests.test_fetch_writes_then_verifies_the_manifest) ... ok
@@ -197,7 +255,26 @@ test_duplicate_train_normals_are_dropped_and_counted (test_visa.ProtocolTests.te
 test_protocol_digest_is_sealed (test_visa.ProtocolTests.test_protocol_digest_is_sealed) ... ok
 test_split_is_deterministic_and_disjoint (test_visa.ProtocolTests.test_split_is_deterministic_and_disjoint) ... ok
 test_split_refuses_a_class_too_small_for_the_protocol (test_visa.ProtocolTests.test_split_refuses_a_class_too_small_for_the_protocol) ... ok
-test_a_server_that_ignores_or_misplaces_the_range_is_refused (test_visa.RangedDownloadTests.test_a_server_that_ignores_or_misplaces_the_range_is_refused) ... ok
+test_a_server_that_ignores_or_misplaces_the_range_is_refused (test_visa.RangedDownloadTests.test_a_server_that_ignores_or_misplaces_the_range_is_refused) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 36466)
+Traceback (most recent call last):
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/socketserver.py", line 766, in __init__
+    self.handle()
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/http/server.py", line 428, in handle_one_request
+    method()
+  File "/home/komail/projects/mizan/tests/test_visa.py", line 163, in do_GET
+    self.wfile.write(body)
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionResetError: [Errno 104] Connection reset by peer
+----------------------------------------
+ok
 test_range_files_from_another_chunking_are_never_joined (test_visa.RangedDownloadTests.test_range_files_from_another_chunking_are_never_joined) ... ok
 test_ranged_download_assembles_identical_bytes (test_visa.RangedDownloadTests.test_ranged_download_assembles_identical_bytes) ... ok
 test_ranged_download_resumes_existing_chunks (test_visa.RangedDownloadTests.test_ranged_download_resumes_existing_chunks) ... ok
@@ -247,6 +324,6 @@ test_rewritten_local_history_is_detected (test_witness.WitnessTests.test_rewritt
 test_witness_refuses_malformed_forked_and_foreign_batches (test_witness.WitnessTests.test_witness_refuses_malformed_forked_and_foreign_batches) ... ok
 
 ----------------------------------------------------------------------
-Ran 231 tests in 60.689s
+Ran 289 tests in 93.862s
 
 OK (skipped=4)

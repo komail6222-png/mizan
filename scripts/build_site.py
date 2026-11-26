@@ -34,6 +34,8 @@ import re
 import shutil
 import sys
 import tempfile
+
+import numpy as np
 from decimal import Decimal, ROUND_HALF_UP
 from fractions import Fraction
 from pathlib import Path
@@ -58,6 +60,7 @@ COPIED = {
     "report/models.html": "reports/evaluation/models.html",
     "report/visa/index.html": "reports/visa/index.html",       # BASIRA on real images (scripts/build_visa_report.py)
     "report/visa/classes.html": "reports/visa/classes.html",
+    "report/opsd/index.html": "reports/opsd/index.html",
     **{f"{kind}/index.html": f"spaces/{kind}/index.html" for kind in SPACES},
     "og.png": "site/og.png",
     "OFL-ReadexPro.txt": "mizan/web/fonts/OFL-ReadexPro.txt",  # the licence of the typeface every page embeds
@@ -291,6 +294,72 @@ def visa_facts(r):
     }
 
 
+OPSD = "reports/opsd/rasid.json"
+# The pooled comparison of the shipped risk-aware ridge plan with the seasonal-baseline plan, by its interval's sign.
+OPSD_COMPARE = {"higher": ("costs more than", "أعلى كلفة من"), "lower": ("costs less than", "أقل كلفة من"),
+                "not resolved": ("cannot be told apart from", "لا يتميز بفرق مؤكد عن")}
+# A difference's status, by its interval's sign.
+OPSD_STATUS = {True: ("a resolved difference", "وهو فرق مؤكد"), False: ("not resolved", "وهو فرق غير مؤكد")}
+
+
+def opsd_facts(r):
+    """The Real load block, read from reports/opsd/rasid.json: RASID's unchanged forecaster, planner and verifier on two
+    real business sites (OPSD household package, CC BY 4.0) under the sealed protocol. Every phrase comes from an
+    interval's sign; a record that is not the sealed, gated, repeated full run, or whose readings or day counts
+    disagree with themselves, stops the build."""
+    from mizan import opsd
+    if not (r["gate"]["passed"] and (r.get("repeat_run") or {}).get("identical") and r["quick"] is False):
+        fail(f"{OPSD}: the block publishes only a full run whose gate passed and whose repeat run was identical")
+    if r["repeat_run"]["process"] != "a second Python process" or "note" in r["identity"]["chronos"]:
+        fail(f"{OPSD}: the block says the run, with the pinned Chronos model, repeated identically in a second process")
+    if not (r["seal_commit"] and r["protocol_digest"] == opsd.SEALED_DIGEST):
+        fail(f"{OPSD}: the block says the run followed the protocol sealed before any site day was forecast")
+    sites, pooled = r["sites"], r["pooled"]
+    if set(sites) != {"industrial1", "industrial3"}:
+        fail(f"{OPSD}: the block says two business sites, a warehouse and a research-institute building")
+    for site, s in sites.items():
+        if s["counts"]["target_days"] != len(s["rows"]) or sum(s["run_lengths"]) != len(s["rows"]):
+            fail(f"{OPSD}: {site}'s planned days disagree with its rows")
+    for c in pooled["paired"] + pooled["accuracy"] + [p for s in sites.values() for p in s["paired"] + s["accuracy"]]:
+        lo, hi = c["ci95"]
+        if c["reading"] != ("higher" if lo > 0 else "lower" if hi < 0 else "not resolved"):
+            fail(f"{OPSD}: {c['a']} - {c['b']} reads {c['reading']!r} for the interval {lo} to {hi}")
+    pair = {(c["a"], c["b"]): c for c in pooled["paired"]}
+    acc = {(c["a"], c["b"]): c for c in pooled["accuracy"]}
+    gap, naive_gap, cand = acc[("chronos_mae", "ridge_mae")], acc[("ridge_mae", "naive_mae")], pair[("candidate", "seasonal_naive")]
+    plans = [pl for s in sites.values() for pl in s["plans"].values()]
+    share = pooled["share"]
+
+    def points(v):
+        return signed(v * 100, 1)
+
+    def interval(prefix, x, fmt):
+        return {prefix: fmt(x["mean"]), prefix + "_lo": fmt(x["ci95"][0]), prefix + "_hi": fmt(x["ci95"][1])}
+    return {
+        "opsd_sites": str(len(sites)),
+        "opsd_days": group(sum(s["counts"]["target_days"] for s in sites.values())),
+        "opsd_days_wh": group(sites["industrial1"]["counts"]["target_days"]),
+        "opsd_days_rb": group(sites["industrial3"]["counts"]["target_days"]),
+        "opsd_err_chronos": percent(float(np.mean([s["forecast"]["chronos_mae_share_of_load"] for s in sites.values()]))),
+        "opsd_err_ridge": percent(float(np.mean([s["forecast"]["ridge_mae_share_of_load"] for s in sites.values()]))),
+        **interval("opsd_err_gap", gap, points),
+        "opsd_err_phrase_en": OPSD_STATUS[gap["reading"] != "not resolved"][0],
+        "opsd_err_phrase_ar": OPSD_STATUS[gap["reading"] != "not resolved"][1],
+        "opsd_ridge_naive_en": {"lower": "resolved, with ridge lower", "higher": "resolved, with ridge higher",
+                                "not resolved": "not resolved"}[naive_gap["reading"]],
+        "opsd_ridge_naive_ar": {"lower": "مؤكد، وخطأ ridge أقل", "higher": "مؤكد، وخطأ ridge أعلى",
+                                "not resolved": "غير مؤكد"}[naive_gap["reading"]],
+        **interval("opsd_share_best", share["chronos_risk_neutral"], percent),
+        **interval("opsd_share_cand", share["candidate"], percent),
+        **interval("opsd_share_naive", share["seasonal_naive"], percent),
+        **interval("opsd_cand_naive", cand, lambda v: points(v) + "%"),
+        "opsd_cand_naive_en": OPSD_COMPARE[cand["reading"]][0],
+        "opsd_cand_naive_ar": OPSD_COMPARE[cand["reading"]][1],
+        "opsd_verified": group(sum(pl["verified_feasible"] for pl in plans)),
+        "opsd_plans": group(sum(pl["kept_days"] + pl["rejected"] + pl["no_plan"] for pl in plans)),
+    }
+
+
 def recorded_tests(text):
     """The test counts the introduction states, from reports/application-tests.txt. It says that the main run passed,
     that every test it skipped is a Hugging Face loader test, that those passed in the optional environment, and that
@@ -354,6 +423,7 @@ def facts(packet):
         "forecast_value": signed(forecast["total_difference"]),
         **hf_facts(*(load(f"reports/hf/{k}.json") for k in ("basira", "rasid", "sanad")), intervals),
         **visa_facts(load(VISA)),
+        **opsd_facts(load(OPSD)),
     }
 
 

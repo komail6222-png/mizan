@@ -63,7 +63,7 @@
     "external_requests": 0,
     "charts_with_tooltips": 4,
     "contrast": {
-      "text_elements": 472,
+      "text_elements": 478,
       "failures": 0,
       "disabled_exempt": 0,
       "color_schemes": [
@@ -84,7 +84,7 @@
     "external_requests": 0,
     "charts_with_tooltips": 4,
     "contrast": {
-      "text_elements": 472,
+      "text_elements": 478,
       "failures": 0,
       "disabled_exempt": 0,
       "color_schemes": [
@@ -221,6 +221,50 @@
     "fit_tables": 0,
     "contrast": {
       "text_elements": 2160,
+      "failures": 0,
+      "disabled_exempt": 0,
+      "color_schemes": [
+        "light",
+        "dark"
+      ]
+    }
+  },
+  {
+    "viewport": [
+      1280,
+      900
+    ],
+    "views": [
+      "opsd"
+    ],
+    "page_errors": 0,
+    "external_requests": 0,
+    "fit_tables": 1,
+    "opsd_readings": 24,
+    "contrast": {
+      "text_elements": 726,
+      "failures": 0,
+      "disabled_exempt": 0,
+      "color_schemes": [
+        "light",
+        "dark"
+      ]
+    }
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "views": [
+      "opsd"
+    ],
+    "page_errors": 0,
+    "external_requests": 0,
+    "fit_tables": 1,
+    "opsd_readings": 24,
+    "contrast": {
+      "text_elements": 726,
       "failures": 0,
       "disabled_exempt": 0,
       "color_schemes": [
@@ -246,7 +290,7 @@
     "rtl": true,
     "focus_kept_on_redraw": true,
     "contrast": {
-      "text_elements": 405,
+      "text_elements": 461,
       "failures": 0,
       "disabled_exempt": 0
     }
@@ -268,7 +312,7 @@
     "rtl": true,
     "focus_kept_on_redraw": true,
     "contrast": {
-      "text_elements": 397,
+      "text_elements": 453,
       "failures": 0,
       "disabled_exempt": 0
     }
