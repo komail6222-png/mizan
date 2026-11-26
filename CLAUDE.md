@@ -15,7 +15,7 @@ mizan doctor                      # reports SQLite; follow the README section if
 ## Commands
 
 ```bash
-python -m unittest discover -s tests -v                       # 222 tests (4 HF loader tests skip without torch)
+python -m unittest discover -s tests -v                       # 231 tests (4 HF loader tests skip without torch)
 python -m mizan run sanad examples/sanad.json --out /tmp/sanad.json
 python -m mizan verify /tmp/sanad.json
 python -m mizan explain /tmp/sanad.json --lang ar

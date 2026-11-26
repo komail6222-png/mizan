@@ -2,7 +2,7 @@
 
 Prepared 26 November 2026 on the `visa-evaluation` branch; not yet released. Builds on 3.1.
 
-Until 3.1, every BASIRA figure came from generated rings. 3.2 runs the unchanged engine on real photographs, the public VisA dataset, and asks two questions: **does the false-alert promise of BASIRA's calibration hold on real images, and how many real defects does it catch at that promise?** The answers are published as they came out. The promise held in every check made. Detection is low: at the 5% target with the full bank, the shipped descriptor catches 26.8% of defective images and DINOv2-small, at its native colour input, 38.6%. Most defects pass. The deployed engine, its profiles, the signed exhibit and the pinned key are unchanged.
+Until 3.1, every BASIRA figure came from generated rings. 3.2 runs the unchanged engine on real photographs, the public VisA dataset, and asks two questions: **does the false-alert promise of BASIRA's calibration hold on real images, and how many real defects does it catch at that promise?** The answers are published as they came out. No check found a departure from the promise, though the check flags only clear departures. Detection is low: at the 5% target with the full bank, the shipped descriptor catches 26.8% of defective images and DINOv2-small, at its native colour input, 38.6%. Most defects pass. The deployed engine, its profiles, the signed exhibit and the pinned key are unchanged.
 
 All figures below are in `reports/visa/basira.json`. The run log is `reports/visa/runs.json`.
 
@@ -21,7 +21,7 @@ The whole protocol (split sizes, configurations, rules, scorers, statistics, exa
 
 - **Split per class.** Train normals in path order, then a permutation seeded from SHA-256 of `20220922:<class>`: 30 reference parts, 100 calibration parts, and the rest halved into a draw pool and an evaluation pool for the repeated-calibration study.
 - **Configurations.** *As shipped*: 10 reference and 24 calibration parts, the marginal rule. *Full*: 30 reference and 100 calibration parts, the marginal rule and the PAC rule (δ = 1/10). α = 1/20 throughout.
-- **Statistics.** Clopper–Pearson 95% intervals for rates. An exact exchangeability check: the long-run false-alert rate of a rank-k-of-m threshold is Beta(m−k+1, k), so each class's false-alert count is Beta-Binomial, and the classes combine by exact convolution into a central 95% range. AUROC by Mann–Whitney with a stratified bootstrap. Paired comparisons by a bootstrap stratified by class and label (2,000 draws, seed 2026). The study draws 400 banks per size m = 24, 50, 100 (seed 23). Many intervals are reported and none is adjusted for multiple comparisons.
+- **Statistics.** Clopper–Pearson 95% intervals for rates. An exact exchangeability check: the long-run false-alert rate of a rank-k-of-m threshold is Beta(m−k+1, k), so each class's false-alert count is Beta-Binomial, and the classes combine by exact convolution into a central 95% range. AUROC by Mann–Whitney with a stratified bootstrap. Paired comparisons by a bootstrap stratified by class and label (2,000 draws, seed 2026). The study draws 400 calibration sets per size m = 24, 50, 100 (seed 23), with each line's bank fixed. Many intervals are reported and none is adjusted for multiple comparisons.
 - **Dry run first.** Before the real run, a dry run scored train normals only, for timing and memory (1,825.1 s, peak 588.1 MiB). It opened no test image: it verified and read the train entries only.
 
 ## 3. The fidelity gate
@@ -47,7 +47,7 @@ Split-conformal calibration promises a false-alert rate of at most α on average
 | DINOv2-small, engine input | 59 of 962 | 31 to 67 | 0.240 |
 | DINOv2-small, native input | 48 of 962 | 31 to 67 | 0.975 |
 
-All 9 pooled checks (three scorers, three rules) and all 27 checks by VisA type read *consistent with exchangeability*. On these images, no check detects a departure from the assumption the promise rests on.
+All 9 pooled checks (three scorers, three rules) and all 27 checks by VisA type read *consistent with exchangeability*. On these images, no check detects a departure from the assumption the promise rests on. The check flags only clear departures: with the full bank, any count from 31 to 67 out of 962 reads consistent.
 
 ### How many defects are caught?
 
@@ -65,7 +65,7 @@ Pooled over the 12 lines, with exact 95% intervals:
 | | Full | 463 of 1,200 · 38.6% (35.8% to 41.4%) | 48 of 962 · 5.0% (3.7% to 6.6%) |
 | | Full, PAC rule | 281 of 1,200 · 23.4% (21.0% to 25.9%) | 15 of 962 · 1.6% (0.9% to 2.6%) |
 
-At a 5% false-alert target, most real defects pass every scorer. The PAC rule trades detection for a per-bank bound.
+At a 5% false-alert target, most real defects pass every scorer. The PAC rule trades detection for a per-bank bound. Each false-alert interval in this table describes these 12 fitted thresholds only, one per line; whether the promise holds is the exchangeability check above.
 
 ### Ranking quality
 
@@ -82,9 +82,11 @@ Full bank, marginal rule; paired bootstrap stratified by class and label:
 
 On the engine's own 96 px greyscale input, the pretrained features catch more defects than the hand-built descriptor at the same promise. Native colour input adds a smaller gain on top. It is off the engine path, and this evaluation does not separate the effect of resolution from that of colour.
 
+These intervals resample test images with each line's calibration set fixed, so "resolved" holds for those 12 sets. The native-input gain in detection is the narrowest: its interval starts at +0.2 points, two images in 1,200. The repeated-calibration study, which redraws the calibration sets, points the same way: at m = 100, DINOv2-small catches 38.9% at native input against 35.8% on the engine input, a mean over 400 draws per line with no interval.
+
 ### Repeated calibration
 
-With each line's full bank fixed, 400 calibration sets per size were drawn from its draw pool. Long-run false alerts were measured on its evaluation pool, and detection on its test anomalies. Pooled over lines with equal weight, the mean false-alert rate stays below 5% at every size for every scorer (from 3.1% to 4.6%). The share of banks above 5% is below its theoretical value in every row; at m = 100 it is 26.4%, 37.8% and 33.9% against a theoretical 43.6%. Each line's draws reuse one draw pool and one evaluation pool, so these shares are indicative: no interval is reported for them.
+With each line's full bank fixed, 400 calibration sets per size were drawn from its draw pool. Long-run false alerts were measured on its evaluation pool, and detection on its test anomalies. Pooled over lines with equal weight, the mean false-alert rate stays below 5% at every size for every scorer (from 3.1% to 4.6%). The share of calibration sets above 5% is below its theoretical value in every row; at m = 100 it is 26.4%, 37.8% and 33.9% against a theoretical 43.6%. Each line's draws reuse one draw pool and one evaluation pool, so these shares are indicative: no interval is reported for them.
 
 ### Examples
 
@@ -94,13 +96,24 @@ The results page shows four images, chosen by a fixed rule (shipped descriptor, 
 
 - `reports/visa/index.html` (summary) and `reports/visa/classes.html` (per line, by type, the study) are built by `scripts/build_visa_report.py`, which refuses a record whose gate failed or whose repeat run was not identical. They are served at `report/visa/`, and the evaluation report links to them.
 - The introduction gains a bilingual block, "Real images: BASIRA on VisA". `scripts/build_site.py` reads its figures from `reports/visa/basira.json`. It stops the build if a sentence no longer holds: the run must be the sealed protocol with a passing gate and an identical repeat; every scorer must be scored on the same images; most defects must still pass; each step towards DINOv2 at native input must still be a resolved gain in detection and AUROC, with neither false-alert difference resolved; and every reading must match the sign of its interval. The introduction and its limits no longer say that all data is generated.
-- `scripts/check_exhibits.py` checks both pages in Chromium at 1280 and 390 px. The readings must follow the stored verdicts and interval signs, with four examples or "none", no overflow, comparison tables that fit, zero external requests, and WCAG AA contrast in light and dark.
+- `scripts/check_exhibits.py` checks both pages in Chromium at 1280 and 390 px. Each reading on the page must match the verdict or reading stored in the record, which the evaluation derives from the exact ranges and interval signs. It also checks four examples or "none", no overflow, comparison tables that fit, zero external requests, and WCAG AA contrast in light and dark.
+- The summary page labels the pooled false-alert interval as describing these 12 fitted thresholds only, so it is not read as the test of the promise. The pages read the protocol's numbers (bank sizes, α, δ, draws) from the record.
 
 ## Disclosures
 
 - **The seal fixes the protocol, not the code.** The evaluation harness and its runner were finished after the seal commit and before the real run. Two changes in that interval are worth naming. The download became 16 parallel resumable byte ranges, verified by the same SHA-256, after a single-stream download was cut off when the machine slept. The run log now records the tree state at the start of a run.
 - **The dry run's log entry reads `"dirty": true`.** That flag came from the earlier check, which counted untracked output files. The dry run ran from commit `c990e2f9` with the evaluation code committed. The real run's entry and record read `"dirty": false`.
-- **After the real run, no engine, harness or protocol code changed.** Only presentation code changed. One paired interval's upper end is exactly 0.0, so a reading that said "spans zero" now says "includes zero".
+- **After the real run, no engine, harness (`mizan/visa_evaluation.py`) or protocol code changed.** The final review led to changes that alter no computation:
+  - **The runner** (`scripts/evaluate_visa.py`):
+    - `--child` now runs only as the repeat run that `--repeat` starts, and only into the folder its parent names.
+    - The run log gains a "started" entry, written before any VisA image is scored. The two entries already in `reports/visa/runs.json` have no `event` field and were written at the end of their runs.
+    - `--seal` must be the commit that introduced the digest.
+    - The tree-state check also counts untracked files under `mizan/` and `scripts/`.
+    - A full run needs all 12 classes.
+  - **The download** (`scripts/fetch_visa.py`): range files name their bytes, and each reply's `Content-Range` is checked.
+  - **The presentation:**
+    - One paired interval's upper end is exactly 0.0, so a reading that said "spans zero" now says "includes zero".
+    - The false-alert interval is labelled as describing these 12 fitted thresholds only, as the design asked.
 
 ## Limits
 
@@ -108,7 +121,7 @@ The results page shows four images, chosen by a fixed rule (shipped descriptor, 
 - **No escape-rate or industrial certificate.** VisA's defects are not a production line's defect mix, and a detection rate on them does not carry over to one. The false-alert check tests exchangeability between VisA's own normal images. It does not test drift on a live line.
 - **The engine's front end is 96 px greyscale.** It discards colour and fine detail. The results above say how much that costs on these images, not how to fix it.
 - **CPU only**, DINOv2-small frozen, no fine-tuning.
-- **Many intervals, no multiplicity adjustment.** The study's shares and the per-class figures are indicative.
+- **Many intervals, no multiplicity adjustment.** The study's shares and the per-class figures are indicative. The paired readings hold for each line's one calibration set.
 
 ## Reproduction
 

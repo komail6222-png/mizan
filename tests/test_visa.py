@@ -5,6 +5,7 @@ import io
 import json
 import tarfile
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -195,11 +196,44 @@ class RangedDownloadTests(unittest.TestCase):
 
     def test_ranged_download_resumes_existing_chunks(self):
         size = -(-len(self.blob) // 4)
-        part = self.dest.with_name(self.dest.name + ".part01")
+        part = self.dest.with_name(f"{self.dest.name}.part-{size}-{2 * size - 1}")   # each range file names its bytes
         part.write_bytes(self.blob[size:size + size // 2])   # half of the second chunk arrived before an interruption
         self.assertEqual(self.download(), self.sha)
         self.assertEqual(self.dest.read_bytes(), self.blob)
         self.assertEqual(self.handler.sent, len(self.blob) - size // 2)
+
+    def test_range_files_from_another_chunking_are_never_joined(self):
+        # An interrupted run with 8 ranges leaves files whose bytes belong elsewhere under a 4-range split.
+        size8 = -(-len(self.blob) // 8)
+        stale = self.dest.with_name(f"{self.dest.name}.part-{size8}-{2 * size8 - 1}")
+        stale.write_bytes(self.blob[size8:size8 + 1000])
+        old = self.dest.with_name(self.dest.name + ".part01")   # the earlier, unnamed range format
+        old.write_bytes(b"x" * 1000)
+        self.assertEqual(self.download(), self.sha)
+        self.assertEqual(sorted(p.name for p in self.dest.parent.iterdir()), [self.dest.name])
+
+    def test_a_server_that_ignores_or_misplaces_the_range_is_refused(self):
+        from scripts.fetch_visa import download
+        class Whole(_Blob):   # answers a range request with the whole file
+            def _range(self):
+                return 0, len(self.blob) - 1, False
+        class Shifted(_Blob):   # answers 206 for bytes one past those asked for
+            def _range(self):
+                start, end, partial = super()._range()
+                return min(start + 1, end), end, partial
+        for handler in (Whole, Shifted):
+            with self.subTest(handler.__name__), tempfile.TemporaryDirectory() as d:
+                server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), type("H", (handler,), {"blob": self.blob, "sent": 0}))
+                threading.Thread(target=server.serve_forever, daemon=True).start()
+                dest = Path(d) / "VisA_test.tar"
+                try:
+                    with self.assertRaises(Refused) as cm, contextlib.redirect_stdout(io.StringIO()):
+                        download(f"http://127.0.0.1:{server.server_address[1]}/VisA_test.tar", dest, len(self.blob), chunks=4)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                self.assertEqual(cm.exception.code, "VISA_DOWNLOAD")
+                self.assertFalse(dest.exists())
 
     def test_size_mismatch_is_refused_before_anything_is_written(self):
         from scripts.fetch_visa import download
@@ -239,6 +273,27 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in self.out.rglob("*") if p.suffix in (".part", ".tar")), [])
         self.assertFalse((self.out / "data").exists())
         self.assertFalse(self.manifest.exists())
+
+    def test_extraction_refuses_a_member_that_escapes_and_leaves_nothing(self):
+        from scripts.fetch_visa import extract
+        evil = Path(self.tmp.name) / "evil.tar"
+        payload = Path(self.tmp.name) / "payload.txt"
+        payload.write_text("x", encoding="utf-8")
+        data = Path(self.tmp.name) / "data"
+        with tarfile.open(evil, "w") as t:
+            t.add(payload, arcname="VisA/ok.txt")
+            t.add(payload, arcname="../escaped.txt")
+        with self.assertRaises(tarfile.TarError):   # a member that climbs out is refused
+            extract(evil, data)
+        self.assertFalse(data.exists())
+        self.assertFalse(data.with_name("data.part").exists())
+        self.assertFalse((Path(self.tmp.name) / "escaped.txt").exists())
+        with tarfile.open(evil, "w") as t:          # an absolute member is made relative and stays inside
+            t.add(payload, arcname="VisA/ok.txt")
+            t.add(payload, arcname="/abs/escaped.txt")
+        extract(evil, data)
+        self.assertTrue((data / "abs" / "escaped.txt").is_file())
+        self.assertFalse(Path("/abs/escaped.txt").exists())
 
     def test_fetch_writes_then_verifies_the_manifest(self):
         from mizan.visa import verify_manifest

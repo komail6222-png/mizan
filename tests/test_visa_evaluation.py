@@ -1,6 +1,8 @@
 import json
+import os
 import unittest
 from fractions import Fraction
+from pathlib import Path
 
 import numpy as np
 from scipy import stats
@@ -284,26 +286,114 @@ class RunnerTests(unittest.TestCase):
         from scripts.evaluate_visa import run
         args = dict(models_root="unused", reason="test", loaders=self.loaders, quick=True, log=self.log,
                     manifest_path=self.manifest)
+        out = kw.pop("out", self.out)
         args.update(kw)
         with contextlib.redirect_stdout(io.StringIO()):
-            return run(self.data, self.out, **args)
+            return run(self.data, out, **args)
 
     def test_dry_run_never_opens_test_images(self):
+        # Every file the dry run opens, by PIL or by plain open() (hashing for the manifest check included).
         from unittest import mock
+        import builtins
         import PIL.Image
-        opened, real_open = [], PIL.Image.open
-        def spy(fp, *a, **k):
+        opened, real_pil, real_open = [], PIL.Image.open, builtins.open
+        def note(fp):
             if isinstance(fp, (str, bytes)) or hasattr(fp, "__fspath__"):
-                opened.append(str(fp))
-            return real_open(fp, *a, **k)
-        with mock.patch.object(PIL.Image, "open", spy):
+                opened.append(os.fsdecode(fp))
+        def pil_spy(fp, *a, **k):
+            note(fp)
+            return real_pil(fp, *a, **k)
+        def open_spy(file, *a, **k):
+            note(file)
+            return real_open(file, *a, **k)
+        with mock.patch.object(PIL.Image, "open", pil_spy), mock.patch.object(builtins, "open", open_spy):
             self.run_visa(dry_run=True)
-        self.assertTrue(opened, "the dry run should open train images")
+        images = [p for p in opened if p.lower().endswith((".jpg", ".png"))]
+        self.assertTrue(images, "the dry run should open train images")
         self.assertFalse([p for p in opened if any(p.endswith(t) for t in self.tests)])
         self.assertFalse((self.out / "basira.json").exists())
         log = json.loads(self.log.read_text(encoding="utf-8"))
-        self.assertEqual(len(log), 1)
-        self.assertTrue(log[0]["dry_run"])
+        self.assertEqual([(e["event"], e["dry_run"]) for e in log], [("started", True), ("finished", True)])
+
+    def test_a_run_is_logged_before_it_scores_and_a_crash_leaves_that_entry(self):
+        from unittest import mock
+        from mizan import visa_evaluation as ve
+        ok = {"passed": True, "checked": ["stub"], "mismatches": [], "bit_exact": True, "rule": "stub"}
+        def broken(models_root):
+            def features(image):
+                raise RuntimeError("scorer crashed")
+            return {k: ve.Scorer(k, features, k != "dinov2-native", "test/" + k) for k in ("descriptor", "dinov2-engine", "dinov2-native")}
+        with mock.patch.object(ve, "fixture_gate", return_value=ok), mock.patch.object(ve, "dinov2_gate", return_value=ok), \
+                mock.patch.object(ve, "frozen_record", return_value={}), \
+                mock.patch("scripts.evaluate_visa.check_seal", return_value=None), self.assertRaises(RuntimeError):
+            self.run_visa(seal="1" * 40, loaders=broken)   # the gates pass; the first VisA image crashes the scorer
+        log = json.loads(self.log.read_text(encoding="utf-8"))
+        self.assertEqual([(e["event"], e["dry_run"], e["seal_commit"]) for e in log], [("started", False, "1" * 40)])
+
+    def test_child_mode_is_only_the_repeat_run_of_a_parent(self):
+        from unittest import mock
+        from mizan import visa_evaluation as ve
+        from mizan.core.contract import Refused
+        from scripts.evaluate_visa import CHILD_ENV, EVIDENCE_DIR
+        ok = {"passed": True, "checked": ["stub"], "mismatches": [], "bit_exact": True, "rule": "stub"}
+        cases = {  # (environment value, --out): each must be refused before anything is scored
+            "no parent": (None, self.out),
+            "a parent that named another folder": (str(self.out.parent / "other"), self.out),
+            "the evidence folder": (str(EVIDENCE_DIR.resolve()), EVIDENCE_DIR),
+        }
+        for name, (value, out) in cases.items():
+            env = {k: v for k, v in os.environ.items() if k != CHILD_ENV} | ({CHILD_ENV: value} if value else {})
+            with self.subTest(name), mock.patch.dict(os.environ, env, clear=True), self.assertRaises(Refused) as cm:
+                self.run_visa(seal="1" * 40, child=True, out=out)
+            self.assertEqual(cm.exception.code, "VISA_CHILD")
+        self.assertEqual(self.loaded, [])
+        # Started by a parent for this folder, it writes there and leaves the log to the parent.
+        with mock.patch.dict(os.environ, {CHILD_ENV: str(self.out.resolve())}), \
+                mock.patch.object(ve, "fixture_gate", return_value=ok), mock.patch.object(ve, "dinov2_gate", return_value=ok), \
+                mock.patch("scripts.evaluate_visa.check_seal", return_value=None):
+            self.run_visa(seal="1" * 40, child=True)
+        self.assertTrue((self.out / "basira.json").exists())
+        self.assertFalse(self.log.exists())
+
+    def test_the_repeat_run_names_its_folder_to_the_child(self):
+        from unittest import mock
+        import scripts.evaluate_visa as ev
+        seen = {}
+        def fake_run(cmd, check, env):
+            out = Path(cmd[cmd.index("--out") + 1])
+            seen.update(cmd=cmd, env=env, out=out)
+            (out / "basira.json").write_text("{}", encoding="utf-8")
+        with mock.patch.object(ev.subprocess, "run", fake_run):
+            self.assertEqual(ev._second_process(self.data, "models", "1" * 40, self.manifest, True), {})
+        self.assertIn("--child", seen["cmd"])
+        self.assertEqual(seen["env"][ev.CHILD_ENV], str(seen["out"].resolve()))
+
+    def test_a_full_run_needs_every_class(self):
+        from mizan.core.contract import Refused
+        with self.assertRaises(Refused) as cm:
+            self.run_visa(dry_run=True, quick=False)   # the stand-in tree has two of the twelve classes
+        self.assertEqual(cm.exception.code, "VISA_CLASSES")
+        self.assertEqual(self.loaded, [])
+
+    def test_the_seal_is_the_commit_that_introduces_the_digest(self):
+        from unittest import mock
+        from mizan import visa
+        from mizan.core.contract import Refused
+        import scripts.evaluate_visa as ev
+        line = f'SEALED_DIGEST = "{visa.SEALED_DIGEST}"'
+        def git_with(parent):
+            def git(*args):
+                if args[0] in ("cat-file", "merge-base"):
+                    return ""
+                if args[0] == "show":
+                    return {"S:mizan/visa.py": line, "S^:mizan/visa.py": parent}[args[1]]
+                raise AssertionError(args)
+            return git
+        with mock.patch.object(ev, "_git", git_with(None)):
+            ev.check_seal("S")                       # the digest first appears in S
+        with mock.patch.object(ev, "_git", git_with(line)), self.assertRaises(Refused) as cm:
+            ev.check_seal("S")                       # S only inherits it: a later commit, not the seal
+        self.assertEqual(cm.exception.code, "VISA_SEAL")
 
     def test_failed_gate_writes_nothing_and_exits_2(self):
         from unittest import mock
@@ -346,9 +436,12 @@ class RunnerTests(unittest.TestCase):
         self.run_visa(dry_run=True, reason="first")
         self.run_visa(dry_run=True, reason="second")
         log = json.loads(self.log.read_text(encoding="utf-8"))
-        self.assertEqual([e["reason"] for e in log], ["first", "second"])
+        self.assertEqual([(e["reason"], e["event"]) for e in log],
+                         [("first", "started"), ("first", "finished"), ("second", "started"), ("second", "finished")])
         for entry in log:
-            self.assertTrue({"commit", "date", "dry_run", "reason", "protocol_digest", "peak_rss_mib"} <= set(entry))
+            self.assertTrue({"commit", "date", "dry_run", "reason", "protocol_digest", "event"} <= set(entry))
+        for entry in log[1::2]:
+            self.assertTrue({"elapsed_seconds", "peak_rss_mib"} <= set(entry))
 
     def test_log_records_the_tree_state_taken_at_the_start(self):
         from unittest import mock
@@ -360,16 +453,24 @@ class RunnerTests(unittest.TestCase):
         entry = json.loads(self.log.read_text(encoding="utf-8"))[-1]
         self.assertEqual((entry["commit"], entry["dirty"]), ("c0ffee", False))
 
-    def test_tree_state_ignores_untracked_outputs(self):
+    def test_tree_state_ignores_untracked_outputs_but_not_untracked_code(self):
         from unittest import mock
         import scripts.evaluate_visa as ev
-        calls = []
-        def git(*args):
-            calls.append(args)
-            return "abc" if args[0] == "rev-parse" else ""
-        with mock.patch.object(ev, "_git", git):
-            self.assertEqual(ev._git_state(), {"commit": "abc", "dirty": False})
-        self.assertIn(("status", "--porcelain", "--untracked-files=no"), calls)
+        def git_with(tracked, untracked_code):
+            def git(*args):
+                if args[0] == "rev-parse":
+                    return "abc"
+                if args == ("status", "--porcelain", "--untracked-files=no"):
+                    return tracked
+                if args == ("status", "--porcelain", "--untracked-files=all", "--", "mizan", "scripts"):
+                    return untracked_code
+                raise AssertionError(args)
+            return git
+        for tracked, code, dirty in (("", "", False),            # new evidence under reports/ is not code
+                                     (" M mizan/visa.py", "", True),
+                                     ("", "?? mizan/helper.py", True)):   # an untracked module can shadow imported code
+            with self.subTest(tracked=tracked, code=code), mock.patch.object(ev, "_git", git_with(tracked, code)):
+                self.assertEqual(ev._git_state(), {"commit": "abc", "dirty": dirty})
 
     def test_real_run_writes_a_gated_repeated_record(self):
         from unittest import mock

@@ -10,6 +10,7 @@ import argparse
 import html
 import json
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,8 +46,19 @@ def _checked(record):
     require(record.get("gate", {}).get("passed") is True, "reports/visa/basira.json: the fidelity gate did not pass")
     require((record.get("repeat_run") or {}).get("identical") is True,
             "reports/visa/basira.json: the repeat run is missing or not identical")
+    require(record.get("quick") is False, "reports/visa/basira.json: a quick run is a smoke test, not evidence")
     require(set(SCORERS) <= set(record["pooled"]), "reports/visa/basira.json: a scorer is missing")
     return record
+
+
+def _cfg(record):
+    """The protocol's numbers as the pages state them, read from the record's settings."""
+    s = record["settings"]
+    conf = s["configurations"]
+    return {"as_shipped": [conf["as_shipped"]["reference"], conf["as_shipped"]["calibration"]],
+            "full": [conf["full"]["reference"], conf["full"]["calibration"]],
+            "alpha": f"{float(Fraction(s['alpha']) * 100):g}%", "delta": f"{float(Fraction(s['delta'])):g}",
+            "draws": s["study"]["draws"]}
 
 
 def summary(record):
@@ -68,13 +80,15 @@ def summary(record):
                  "bit_exact": record["gate"]["dinov2"]["bit_exact"]},
         "repeat": record["repeat_run"]["process"], "seal": record["seal_commit"], "digest": record["protocol_digest"],
         "env": {k: env.get(k) for k in ("python", "numpy", "scipy", "pillow", "torch", "cpu")}, "elapsed": record["elapsed_seconds"],
+        "cfg": _cfg(record),
     }
 
 
 def classes_summary(record):
     """What the per-class page embeds: per-class rates for every rule, per-type rates, per-class AUROC and the study."""
     _checked(record)
-    classes = list(record["splits"])
+    splits = record["splits"]
+    classes = sorted(splits, key=lambda c: (splits[c]["type"], c))   # grouped by VisA type
     def study_rows(rows):
         return [[r["m"], _r(r["mean_false_alert"]), _r(r["share_above_alpha"], 4), _r(r["theoretical_share_above_alpha"], 4),
                  _r(r["mean_detection"])] for r in rows]
@@ -88,6 +102,7 @@ def classes_summary(record):
                   for s in SCORERS},
         "study": {s: {"pooled": study_rows(record["study"][s]["pooled"]),
                       "per_class": {c: study_rows(v["rows"]) for c, v in record["study"][s]["per_class"].items()}} for s in SCORERS},
+        "cfg": _cfg(record),
     }
 
 
@@ -96,7 +111,7 @@ ATTRIBUTION_HTML = (f'<p class="lede" id="visa-attribution">{html.escape(ATTRIBU
                     'github.com/amazon-science/spot-diff</a>.</p>')
 
 COMMON_JS = r"""const N={"descriptor":"Shipped descriptor","dinov2-engine":"DINOv2-small, engine input","dinov2-native":"DINOv2-small, native input"};
-const R={"as_shipped":"As shipped: 10 reference, 24 calibration","full":"Full: 30 reference, 100 calibration","full_pac":"Full, PAC rule (δ = 0.1)"};
+const C=D.cfg,R={"as_shipped":`As shipped: ${C.as_shipped[0]} reference, ${C.as_shipped[1]} calibration`,"full":`Full: ${C.full[0]} reference, ${C.full[1]} calibration`,"full_pac":`Full, PAC rule (δ = ${C.delta})`};
 const ci=(lo,hi)=>lo===null?"–":`${pct(lo)} to ${pct(hi)}`;
 const rate=a=>a[1]?`${fmt(a[0])} of ${fmt(a[1])} · ${pct(a[0]/a[1])}`:"–";
 const put=(id,s)=>{document.getElementById(id).textContent=s};"""
@@ -134,9 +149,9 @@ SUMMARY_PAGE = r"""<div class="kicker">Prepared for release 3.2, not yet release
 %%HELPERS%%
 %%COMMON%%
 const T=D.classes.reduce((a,c)=>[a[0]+c[2],a[1]+c[3],a[2]+c[4],a[3]+c[5]],[0,0,0,0]);
-put("visa-lede",`${D.classes.length} real products from the VisA dataset, each treated as one customer's product line: reference and calibration parts come from normal images only, and decisions are made on the official test split, ${fmt(T[0])} normal and ${fmt(T[1])} defective images${T[2]?` (${fmt(T[2])} refused as duplicates of a calibration image)`:""}. The protocol was sealed at commit ${D.seal.slice(0,12)} before any test image was scored. The fidelity gate reproduced the shipped frozen test exactly (${fmt(D.gate.fixture)} checks) and 3.1's DINOv2 frozen test ${D.gate.bit_exact?"bit for bit":"within tolerance"} (${fmt(D.gate.dinov2)} checks), and the whole run repeated identically in ${D.repeat}.`);
+put("visa-lede",`${D.classes.length} real products from the VisA dataset, each treated as one customer's product line: reference and calibration parts come from normal images only, and decisions are made on the official test split, ${fmt(T[0])} normal and ${fmt(T[1])} defective images${T[2]?` (${fmt(T[2])} refused as duplicates of a reference or calibration image)`:""}. The protocol was sealed at commit ${D.seal.slice(0,12)} before any test image was scored. The fidelity gate reproduced the shipped frozen test exactly (${fmt(D.gate.fixture)} checks) and 3.1's DINOv2 frozen test ${D.gate.bit_exact?"bit for bit":"within tolerance"} (${fmt(D.gate.dinov2)} checks), and the whole run repeated identically in ${D.repeat}.`);
 table("visa-head",["Scorer","Defects caught","False alerts"],["descriptor","dinov2-engine","dinov2-native"].map(s=>{const p=D.pooled[s].full;return[N[s],`${rate(p.det)} (${ci(p.det[2],p.det[3])})`,`${rate(p.fa)} (${ci(p.fa[2],p.fa[3])})`]}),[0,1,1]);
-put("visa-head-sub","Pooled over all classes, marginal rule at α = 5%, with exact 95% intervals.");
+put("visa-head-sub",`Pooled over all classes, marginal rule at α = ${C.alpha}, with exact 95% intervals. Each false-alert interval describes these ${D.classes.length} fitted thresholds only, one per class; whether the promise holds is the exchangeability check below.`);
 const best=s=>D.pooled[s].full.det[0]/D.pooled[s].full.det[1];
 put("visa-head-note",`The shipped descriptor sees each part as the engine does, 96 × 96 greyscale. DINOv2-small on the engine input sees the same image; at native input it sees the original colour photograph, off the engine path. Detection: ${["descriptor","dinov2-engine","dinov2-native"].map(s=>`${N[s]} ${pct(best(s))}`).join(", ")}.`);
 const V={"consistent":"Consistent with exchangeability","more":"More false alerts than exchangeability allows","fewer":"Fewer false alerts than exchangeability implies"};
@@ -158,7 +173,7 @@ const O={"caught":"Defect caught","missed":"Defect missed","false_alert":"False 
 const box=document.getElementById("visa-examples");box.replaceChildren();
 Object.keys(O).forEach(k=>{const e=D.examples[k],f=h("figure");if(e){const im=h("img");im.src="data:image/jpeg;base64,"+e[3];im.alt=`${O[k]}: ${e[0]}, as the engine sees it`;f.append(im)}else f.append(h("div",undefined,"empty"))
   const c=h("figcaption");c.append(h("strong",O[k]));c.append(e?`${e[0]} · score ${fmt(e[2],3)}`:"none");f.append(c);box.append(f)});
-put("visa-examples-sub","Shipped descriptor, full configuration. For each outcome, the image whose score is the median of that outcome's images, shown as the engine sees it: 96 × 96 greyscale.");
+put("visa-examples-sub","Shipped descriptor, full configuration. For each outcome, the image whose score is the lower median of that outcome's images, shown as the engine sees it: 96 × 96 greyscale.");
 const e=D.env;put("foot",`Generated from reports/visa/basira.json · protocol digest ${D.digest.slice(0,12)} · run of ${fmt(D.elapsed/60,0)} min: Python ${e.python} · NumPy ${e.numpy} · SciPy ${e.scipy} · Pillow ${e.pillow} · torch ${e.torch} · ${e.cpu}. Real public data, not MIZAN's own; no escape-rate certificate follows. Rebuild with python scripts/build_visa_report.py.`);
 </script>
 </body>
@@ -187,11 +202,11 @@ SC.forEach((s,i)=>{const card=h("div",undefined,"card");card.append(h("h3",N[s]+
   table(t.id,["Class","Type","Defects caught","False alerts","AUROC"],D.classes.map(([c,ty])=>{const a=D.per_class[s].full[c],u=D.auroc[s][c];return[c,ty,cell(a,4),cell(a,0),`${fmt(u[0],3)} (${fmt(u[1],3)} to ${fmt(u[2],3)})`]}),[0,0,1,1,1])});
 table("visa-types",["Type","Scorer","Configuration","Defects caught","False alerts"],Object.keys(D.by_type.descriptor.full).flatMap(t=>SC.flatMap(s=>["as_shipped","full","full_pac"].map(r=>{const a=D.by_type[s][r][t];return[t,N[s],R[r],cell(a,4),cell(a,0)]}))),[0,0,0,1,1]);
 const srow=(s,r)=>[N[s],String(r[0]),pct(r[1]),pct(r[2]),r[3]===null?"–":pct(r[3]),pct(r[4])];
-table("visa-study",["Scorer","m","Mean false alerts","Share of banks above 5%","Theoretical share","Mean detection"],SC.flatMap(s=>D.study[s].pooled.map(r=>srow(s,r))),[0,1,1,1,1,1]);
+table("visa-study",["Scorer","m","Mean false alerts",`Share of calibration sets above ${C.alpha}`,"Theoretical share","Mean detection"],SC.flatMap(s=>D.study[s].pooled.map(r=>srow(s,r))),[0,1,1,1,1,1]);
 const sb=document.getElementById("visa-study-classes");sb.replaceChildren();
 SC.forEach((s,i)=>{const d=h("details");d.append(h("summary",`${N[s]}: every class (indicative)`));const sc=h("div",undefined,"scroll"),t=h("table");t.id="visa-study-"+i;sc.append(t);d.append(sc);sb.append(d);
-  table(t.id,["Class","m","Mean false alerts","Share above 5%","Theoretical share","Mean detection"],D.classes.flatMap(([c])=>(D.study[s].per_class[c]||[]).map(r=>[c,...srow(s,r).slice(1)])),[0,1,1,1,1,1])});
-put("visa-study-sub","With each class's full bank fixed, 400 calibration sets of m parts are drawn from that class's draw pool; each threshold's long-run false-alert rate is measured on held-out normal parts from the same class (the evaluation pool), and its detection on the test defects.");
+  table(t.id,["Class","m","Mean false alerts",`Share above ${C.alpha}`,"Theoretical share","Mean detection"],D.classes.flatMap(([c])=>(D.study[s].per_class[c]||[]).map(r=>[c,...srow(s,r).slice(1)])),[0,1,1,1,1,1])});
+put("visa-study-sub",`With each class's full bank fixed, ${C.draws} calibration sets of m parts are drawn from that class's draw pool; each threshold's long-run false-alert rate is measured on held-out normal parts from the same class (the evaluation pool), and its detection on the test defects.`);
 put("visa-study-note","Pooled rows average the classes with equal weight; per-class rows are indicative. No interval is reported for these shares. The theoretical share is what split-conformal calibration implies if the parts are exchangeable.");
 </script>
 </body>

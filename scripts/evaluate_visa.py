@@ -13,7 +13,8 @@ Before any VisA image is scored, a real run checks that mizan.visa.PROTOCOL stil
 frozen test of reports/evaluation/basira.json exactly, and DINOv2 must reproduce 3.1's frozen test of
 reports/hf/basira.json (decisions exact, scores within 1e-6 relative). A failed gate exits with code 2 and writes
 nothing. --dry-run scores train normals only, for timing and memory, and writes no evidence. Every run that scores
-VisA images, dry or real, is appended to reports/visa/runs.json.
+VisA images, dry or real, is appended to reports/visa/runs.json: a "started" entry before the first image is scored and
+a "finished" entry once the record is written. --child is internal: only --repeat starts it, for its second process.
 """
 import argparse
 import json
@@ -41,6 +42,9 @@ MANIFEST = EVIDENCE_DIR / "manifest.json"
 RUN_LOG = EVIDENCE_DIR / "runs.json"
 HF_SHIPPED = ROOT / "reports" / "hf" / "basira.json"
 VOLATILE = ("elapsed_seconds", "environment", "repeat_run", "provenance")
+# Set by --repeat for its child process: the one temporary folder the child may write. The child logs nothing;
+# its parent logs the run. Without it, --child is refused, so no run can score test images unlogged.
+CHILD_ENV = "MIZAN_VISA_REPEAT_OUT"
 
 
 def default_loaders(models_root):
@@ -63,12 +67,15 @@ def _git(*args):
 
 
 def check_seal(seal):
-    """--seal must be a commit on this branch's history whose mizan/visa.py carries the current SEALED_DIGEST."""
+    """--seal must be the commit on this branch's history that introduced the current SEALED_DIGEST: its
+    mizan/visa.py carries the digest and its parent's does not (a later commit only inherits it)."""
     require(_git("cat-file", "-e", f"{seal}^{{commit}}") is not None, "VISA_SEAL", f"{seal} is not a commit here")
     require(_git("merge-base", "--is-ancestor", seal, "HEAD") is not None, "VISA_SEAL", f"{seal} is not an ancestor of HEAD")
-    sealed = _git("show", f"{seal}:mizan/visa.py") or ""
-    require(f'SEALED_DIGEST = "{visa.SEALED_DIGEST}"' in sealed, "VISA_SEAL",
+    line = f'SEALED_DIGEST = "{visa.SEALED_DIGEST}"'
+    require(line in (_git("show", f"{seal}:mizan/visa.py") or ""), "VISA_SEAL",
             f"{seal} does not seal the protocol digest {visa.SEALED_DIGEST}")
+    require(line not in (_git("show", f"{seal}^:mizan/visa.py") or ""), "VISA_SEAL",
+            f"{seal} only inherits the protocol digest; the seal is the commit that introduced it")
 
 
 def _peak_rss_mib():
@@ -88,16 +95,23 @@ def _append_log(log, entry):
 
 
 def _git_state():
-    """The code a run starts from: HEAD and whether any tracked file differs from it (outputs are untracked)."""
-    return {"commit": _git("rev-parse", "HEAD"), "dirty": bool(_git("status", "--porcelain", "--untracked-files=no"))}
+    """The code a run starts from: HEAD, and whether a tracked file differs from it or an untracked file sits among the
+    code (mizan/, scripts/), where it could shadow an import. Untracked outputs elsewhere (reports/, var/) do not count."""
+    tracked = _git("status", "--porcelain", "--untracked-files=no")
+    code = _git("status", "--porcelain", "--untracked-files=all", "--", "mizan", "scripts")
+    return {"commit": _git("rev-parse", "HEAD"), "dirty": bool(tracked) or bool(code)}
 
 
-def _log_entry(*, state, dry_run, reason, seal, out, started, extra=None):
-    return {"commit": state["commit"], "dirty": state["dirty"],
-            "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "dry_run": dry_run, "reason": reason,
-            "protocol_digest": digest(visa.PROTOCOL), "seal_commit": seal,
-            "evidence_dir": Path(out).resolve() == EVIDENCE_DIR.resolve(),
-            "elapsed_seconds": round(time.perf_counter() - started, 1), "peak_rss_mib": _peak_rss_mib(), **(extra or {})}
+def _log_entry(*, event, state, dry_run, reason, seal, out, started, extra=None):
+    """One run-log line. A run writes "started" before it scores any VisA image and "finished" after its record is
+    written, so a run that crashes or is killed still leaves its start in the log."""
+    entry = {"event": event, "commit": state["commit"], "dirty": state["dirty"],
+             "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "dry_run": dry_run, "reason": reason,
+             "protocol_digest": digest(visa.PROTOCOL), "seal_commit": seal,
+             "evidence_dir": Path(out).resolve() == EVIDENCE_DIR.resolve()}
+    if event == "finished":
+        entry.update(elapsed_seconds=round(time.perf_counter() - started, 1), peak_rss_mib=_peak_rss_mib())
+    return {**entry, **(extra or {})}
 
 
 def _gates(scorers, say):
@@ -117,7 +131,7 @@ def _gates(scorers, say):
 def _dry_run(root, manifest, scorers, quick, say):
     """Time each scorer on the train normals only: bank, calibration and both pools. No test image is opened."""
     sizes = ve.QUICK["split"] if quick else None
-    shipped = ve.QUICK["as_shipped"] if quick else (10, 24)
+    shipped = ve.QUICK["as_shipped"] if quick else tuple(visa.PROTOCOL["configurations"]["as_shipped"][k] for k in ("reference", "calibration"))
     timings = {s: 0.0 for s in scorers}
     images = 0
     for cls in [c for c in visa.CLASSES if any(x["object"] == c for x in manifest["images"])]:
@@ -150,12 +164,13 @@ def _compared(record):
 
 
 def _second_process(data, models_root, seal, manifest_path, quick):
-    """The repeat run: this script again, in a fresh interpreter, writing to a temporary folder and no log."""
+    """The repeat run: this script again, in a fresh interpreter, writing to a temporary folder (named to it through
+    CHILD_ENV) and no log; the parent's log entries cover it."""
     with tempfile.TemporaryDirectory() as tmp:
         cmd = [sys.executable, str(Path(__file__).resolve()), "--data", str(data), "--models", str(models_root),
                "--out", tmp, "--reason", "repeat run (second process)", "--seal", seal, "--manifest", str(manifest_path),
                "--child"] + (["--quick"] if quick else [])
-        subprocess.run(cmd, check=True, env=os.environ.copy())
+        subprocess.run(cmd, check=True, env={**os.environ, CHILD_ENV: str(Path(tmp).resolve())})
         return json.loads((Path(tmp) / "basira.json").read_text(encoding="utf-8"))
 
 
@@ -164,7 +179,11 @@ def run(data, out, *, models_root, reason, repeat=False, dry_run=False, seal=Non
     started = time.perf_counter()
     state = _git_state()
     say = lambda s: print(s, flush=True)  # noqa: E731
-    require(repeat or child or Path(out).resolve() != EVIDENCE_DIR.resolve(), "EVIDENCE_OUT",
+    target = Path(out).resolve()
+    if child:
+        require(os.environ.get(CHILD_ENV) == str(target) and target != EVIDENCE_DIR.resolve(), "VISA_CHILD",
+                "--child is the repeat run that --repeat starts: its parent names the temporary folder it writes and logs the run")
+    require(repeat or target != EVIDENCE_DIR.resolve(), "EVIDENCE_OUT",
             f"{EVIDENCE_DIR} holds the published evidence: write it only with --repeat, or choose another --out")
     if not dry_run:
         require(bool(seal), "VISA_SEAL", "A real run names the seal commit (--seal)")
@@ -172,20 +191,29 @@ def run(data, out, *, models_root, reason, repeat=False, dry_run=False, seal=Non
                 "mizan.visa.PROTOCOL differs from its sealed digest; a changed protocol is a new, separately labelled analysis")
         check_seal(seal)
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    present = {x["object"] for x in manifest["images"]}
+    require(quick or present == set(visa.CLASSES), "VISA_CLASSES",
+            f"A full run needs all {len(visa.CLASSES)} VisA classes; the manifest has {len(present)}: {sorted(present)}")
     root = data_root(Path(data) / "data", [{"image": x["path"]} for x in manifest["images"]])
     train_only = {**manifest, "images": [x for x in manifest["images"] if x["split"] == "train"]}
     visa.verify_manifest(root, train_only if dry_run else manifest)
     say(f"verified {len((train_only if dry_run else manifest)['images']):,} images against the manifest")
     scorers = (loaders or default_loaders)(models_root)
 
+    def log_event(event, extra=None):
+        if not child:
+            _append_log(log, _log_entry(event=event, state=state, dry_run=dry_run, reason=reason, seal=seal, out=out,
+                                        started=started, extra=extra))
+
     if dry_run:
+        log_event("started")
         timings = _dry_run(root, train_only, scorers, quick, say)
         say(json.dumps(timings))
-        if not child:
-            _append_log(log, _log_entry(state=state, dry_run=True, reason=reason, seal=seal, out=out, started=started, extra=timings))
+        log_event("finished", timings)
         return {"dry_run": True, **timings}
 
     gate = _gates(scorers, say)
+    log_event("started")
     record = _record(root, manifest, scorers, models_root, loaders is not None, quick, gate, seal)
     if repeat and not child:
         if loaders is None:
@@ -199,9 +227,7 @@ def run(data, out, *, models_root, reason, repeat=False, dry_run=False, seal=Non
     record["elapsed_seconds"] = round(time.perf_counter() - started, 1)
     paths = _write(out, {"basira": record})
     say(f"wrote {', '.join(str(p) for p in paths)}")
-    if not child:
-        _append_log(log, _log_entry(state=state, dry_run=False, reason=reason, seal=seal, out=out, started=started,
-                                    extra={"repeat_identical": record.get("repeat_run", {}).get("identical")}))
+    log_event("finished", {"repeat_identical": record.get("repeat_run", {}).get("identical")})
     return record
 
 

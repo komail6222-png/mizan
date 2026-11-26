@@ -25,7 +25,7 @@ python -m mizan verify reports/demo/demo_results.json --expected-key 9a627609771
 
 - **Fix with evidence.** Reproduce the problem first. Keep the change small and add a test that fails before it and passes after.
 - **Do not touch signed data.** `reports/demo/demo_results.json` and the pages built from it (`reports/demo/MIZAN_Demo.html`, `mizan/web/index.html`, `spaces/*/index.html`) must keep verifying against the pinned key. Never re-sign them.
-- **Numbers come from `reports/`.** A claim in documentation must point to the report file that supports it. All bundled data is generated. The one real dataset, VisA (`reports/visa/`), is fetched rather than bundled, and must be named and attributed (`docs/DATA_LICENSES.md`).
+- **Numbers come from `reports/`.** A claim in documentation must point to the report file that supports it. All bundled data is generated. The one real dataset, VisA (`reports/visa/`), is fetched rather than bundled (apart from four 96 px examples on its results page), and must be named and attributed (`docs/DATA_LICENSES.md`).
 - **Keep the agent boundary.** New MCP tools must not grant authority, change thresholds or change deployments.
 - Write code, commit messages and technical documentation in English. Arabic user-facing text is welcome alongside.
 

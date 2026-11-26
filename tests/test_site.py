@@ -293,6 +293,8 @@ class RealImageFactsTests(unittest.TestCase):
         cases = {  # each change must trip its own guard
             "a gate that did not pass": (visa_changed((["gate", "passed"], False)), "gate passed"),
             "a repeat run that was not identical": (visa_changed((["repeat_run", "identical"], False)), "repeat run was identical"),
+            "a repeat run in the same process": (visa_changed((["repeat_run", "process"], "the same process (injected scorers)")), "second process"),
+            "stand-in scorers": (visa_changed((["identity", "dinov2", "note"], "injected scorers")), "second process"),
             "a quick run": (visa_changed((["quick"], True)), "full run"),
             "another protocol": (visa_changed((["protocol_digest"], "0" * 64)), "sealed"),
             "no seal commit": (visa_changed((["seal_commit"], None)), "sealed"),
@@ -325,6 +327,9 @@ class RealImageFactsTests(unittest.TestCase):
                     self.assertIn(self.figures[key], block.group(1) if key.endswith(("_detect", "_auroc_desc", "_auroc_native", "_fa")) else spans, key)
                 self.assertIn("Zou et al., 2022", spans)
                 self.assertIn("CC BY 4.0", spans)
+                # The pooled false-alert interval is labelled as describing these fitted thresholds only (the spec).
+                self.assertIn({"en": "fitted thresholds only", "ar": "العتبات المعايَرة هذه فقط"}[lang], spans)
+                self.assertNotRegex(spans, r"promise held|وعد الإنذار الكاذب صمد")
         self.assertIn('href="report/visa/"', block.group(1))
         for path in ("report/visa/index.html", "report/visa/classes.html"):
             self.assertIn(path, build_site.COPIED, "the site serves the results pages where the link points")

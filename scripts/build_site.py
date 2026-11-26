@@ -237,6 +237,8 @@ def visa_facts(r):
     stops the build."""
     if not (r["gate"]["passed"] and r["repeat_run"]["identical"] and r["quick"] is False):
         fail(f"{VISA}: the block publishes only a full run whose gate passed and whose repeat run was identical")
+    if r["repeat_run"]["process"] != "a second Python process" or "note" in r["identity"]["dinov2"]:
+        fail(f"{VISA}: the block says the run, with the pinned models, repeated identically in a second process")
     if not (r["seal_commit"] and r["protocol_digest"] == SEALED_DIGEST):
         fail(f"{VISA}: the block says the run followed the protocol sealed before any test image was scored")
     normals = sum(s["test_normal"] for s in r["splits"].values())

@@ -231,7 +231,7 @@ MODELS_LINK = r"""<section id="models-link">
 
 VISA_LINK = r"""<section id="visa-link">
 <h2>BASIRA on real images</h2>
-<p class="lede">The inspection engine, unchanged, on twelve real products from the public VisA dataset (CC BY 4.0), with a protocol sealed before any test image was scored, has its own page: <a href="visa/index.html">BASIRA on real images</a>.</p>
+<p class="lede">The inspection engine, unchanged, on real products from the public VisA dataset (CC BY 4.0), with a protocol sealed before any test image was scored, has its own page: <a href="visa/index.html">BASIRA on real images</a>.</p>
 </section>
 """
 

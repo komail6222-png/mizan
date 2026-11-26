@@ -195,7 +195,7 @@ def _visa_record(root):
     manifest = build_manifest(root, read_split(make_visa_tree(root, per_class=8)), "a" * 64, "b" * 64)
     record = evaluate_visa(root, manifest, scorers, quick=True)
     record.update(gate={"passed": True, "fixture": {"checked": ["x"] * 323}, "dinov2": {"checked": ["y"] * 404, "bit_exact": True}},
-                  repeat_run={"identical": True, "process": "a second Python process"}, seal_commit="0" * 40,
+                  repeat_run={"identical": True, "process": "a second Python process"}, seal_commit="0" * 40, quick=False,
                   protocol_digest=digest(PROTOCOL), elapsed_seconds=60.0,
                   environment={"python": "3.12", "numpy": "2", "scipy": "1", "pillow": "13", "torch": "2", "cpu": "test"})
     return record
@@ -240,8 +240,24 @@ class VisaPageTests(unittest.TestCase):
                 src = self.record["pooled"][scorer][rule]
                 self.assertEqual(data["pooled"][scorer][rule]["det"][:2], [src["detection"]["x"], src["detection"]["n"]])
                 self.assertEqual(data["pooled"][scorer][rule]["fa"][:2], [src["false_alert"]["x"], src["false_alert"]["n"]])
-        classes = self.embedded("classes.html")
-        self.assertEqual([c for c, _ in classes["classes"]], list(self.record["splits"]))
+        classes = self.embedded("classes.html")   # grouped by VisA type
+        splits = self.record["splits"]
+        self.assertEqual([c for c, _ in classes["classes"]], sorted(splits, key=lambda c: (splits[c]["type"], c)))
+        # The protocol's numbers come from the record's settings, never typed into the page.
+        settings = self.record["settings"]
+        for name in ("index.html", "classes.html"):
+            cfg = self.embedded(name)["cfg"]
+            self.assertEqual((cfg["as_shipped"], cfg["full"]), tuple([settings["configurations"][k]["reference"], settings["configurations"][k]["calibration"]]
+                                                                      for k in ("as_shipped", "full")))
+            self.assertEqual((cfg["alpha"], cfg["delta"]), ("5%", "0.1"))
+        self.assertEqual(self.embedded("classes.html")["cfg"]["draws"], settings["study"]["draws"])
+        for text in ("10 reference", "30 reference", "δ = 0.1", "α = 5%", "400 calibration", "banks above"):
+            for name, page in self.pages.items():
+                self.assertNotIn(text, page, (name, text))
+
+    def test_visa_summary_labels_the_pooled_false_alert_interval(self):
+        # The spec: the Clopper–Pearson interval describes these fitted thresholds only, not the guarantee test.
+        self.assertIn("fitted thresholds only", self.pages["index.html"])
 
     def test_visa_attribution_is_verbatim(self):
         from mizan.visa import ATTRIBUTION
@@ -261,7 +277,8 @@ class VisaPageTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from scripts.build_visa_report import build
-        for change in ({"gate": {"passed": False}}, {"repeat_run": {"identical": False, "process": "x"}}, {"repeat_run": None}):
+        for change in ({"gate": {"passed": False}}, {"repeat_run": {"identical": False, "process": "x"}}, {"repeat_run": None},
+                       {"quick": True}, {"quick": {"split": [2, 2]}}):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as d:
                 bad = {**copy.deepcopy(self.record), **change}
                 (Path(d) / "basira.json").write_text(json.dumps(bad), encoding="utf-8")

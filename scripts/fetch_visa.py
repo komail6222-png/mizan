@@ -63,12 +63,17 @@ def _head(url, expected_bytes):
 
 
 def _ranged(url, dest, expected_bytes, chunks, say):
-    """Download `chunks` byte ranges in parallel into dest.partNN files, each resumed from what is already on disk
-    (an interrupted run continues where it stopped), then join them into dest while hashing. The joined file is
-    renamed into place only after its exact size is confirmed; the range files are removed only then."""
+    """Download `chunks` byte ranges in parallel into dest.part-<start>-<end> files, each resumed from what is already
+    on disk (an interrupted run continues where it stopped), then join them into dest while hashing. Each file names
+    its bytes, so range files left by a run with another chunk count are discarded, never joined. Every reply must be
+    206 with the Content-Range asked for. The joined file is renamed into place only after its exact size is
+    confirmed; the range files are removed only then."""
     size = -(-expected_bytes // chunks)
     bounds = [(s, min(s + size, expected_bytes) - 1) for s in range(0, expected_bytes, size)]
-    parts = [dest.with_name(f"{dest.name}.part{i:02d}") for i in range(len(bounds))]
+    parts = [dest.with_name(f"{dest.name}.part-{start}-{end}") for start, end in bounds]
+    for stale in dest.parent.glob(dest.name + ".part?*"):   # another chunking, or the earlier .partNN format
+        if stale not in parts:
+            stale.unlink()
     done = [0] * len(bounds)
     lock = threading.Lock()
 
@@ -86,6 +91,9 @@ def _ranged(url, dest, expected_bytes, chunks, say):
             try:
                 with urllib.request.urlopen(request, timeout=60) as r, open(path, "ab") as f:
                     require(r.status == 206, "VISA_DOWNLOAD", f"{url}: range request answered {r.status}, not 206")
+                    sent = r.headers.get("Content-Range", "")
+                    require(sent == f"bytes {start + have}-{end}/{expected_bytes}", "VISA_DOWNLOAD",
+                            f"{url}: asked for bytes {start + have}-{end}, the server sent {sent!r}")
                     for block in iter(lambda: r.read(1 << 20), b""):
                         f.write(block)
             except (OSError, TimeoutError):   # urllib.error.URLError is an OSError; the next attempt resumes
