@@ -158,3 +158,112 @@ class ReportPageTests(unittest.TestCase):
                     (Path(d) / "hf/rasid_intervals.json").write_text(json.dumps(data))
                     with self.assertRaisesRegex(SystemExit, "derive_hf_intervals"):
                         models_summary(Path(d) / "evaluation") if path.startswith("reports/hf") else summarize(Path(d) / "evaluation")
+
+
+class ReportVisaLinkTests(unittest.TestCase):
+    def test_report_links_the_visa_page_only_when_it_exists(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from scripts.build_report import build
+        evaluation = Path(__file__).resolve().parents[1] / "reports/evaluation"
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "evaluation"
+            src.mkdir()
+            for f in evaluation.glob("*.json"):
+                shutil.copy(f, src / f.name)
+            shutil.copytree(evaluation.parent / "safety", Path(d) / "safety")
+            without = Path(build(src, Path(d) / "a.html")).read_text(encoding="utf-8")
+            (Path(d) / "visa").mkdir()
+            (Path(d) / "visa" / "index.html").write_text("<!doctype html>", encoding="utf-8")
+            with_page = Path(build(src, Path(d) / "b.html")).read_text(encoding="utf-8")
+        self.assertNotIn('id="visa-link"', without)
+        self.assertIn('id="visa-link"', with_page)
+        self.assertIn('href="visa/index.html"', with_page)
+
+
+def _visa_record(root):
+    """A complete VisA evidence record built on the generated stand-in with three stand-in scorers."""
+    import numpy as np
+    from mizan.core.contract import digest
+    from mizan.visa import PROTOCOL, build_manifest, read_split
+    from mizan.visa_evaluation import Scorer, evaluate_visa
+    from tests.visa_fixture import make_visa_tree
+    feats = lambda im: np.asarray(im.convert("L").resize((12, 12)), dtype=np.float64)[..., None] / 255  # noqa: E731
+    scorers = [Scorer("descriptor", feats, True, "test/d"), Scorer("dinov2-engine", lambda im: feats(im) ** 2, True, "test/e"),
+               Scorer("dinov2-native", lambda im: feats(im) + .01, False, "test/n")]
+    manifest = build_manifest(root, read_split(make_visa_tree(root, per_class=8)), "a" * 64, "b" * 64)
+    record = evaluate_visa(root, manifest, scorers, quick=True)
+    record.update(gate={"passed": True, "fixture": {"checked": ["x"] * 323}, "dinov2": {"checked": ["y"] * 404, "bit_exact": True}},
+                  repeat_run={"identical": True, "process": "a second Python process"}, seal_commit="0" * 40,
+                  protocol_digest=digest(PROTOCOL), elapsed_seconds=60.0,
+                  environment={"python": "3.12", "numpy": "2", "scipy": "1", "pillow": "13", "torch": "2", "cpu": "test"})
+    return record
+
+
+class VisaPageTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import json
+        import tempfile
+        from pathlib import Path
+        from scripts.build_visa_report import build
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.dir = Path(cls.tmp.name)
+        cls.record = _visa_record(cls.dir / "data")
+        (cls.dir / "basira.json").write_text(json.dumps(cls.record), encoding="utf-8")
+        cls.pages = {p.name: p.read_text(encoding="utf-8") for p in build(cls.dir, cls.dir)}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def embedded(self, name):
+        import json
+        import re
+        return json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', self.pages[name], re.S).group(1))
+
+    def test_visa_pages_are_small_latin_and_offline(self):
+        import re
+        from scripts.build_site import EXTERNAL
+        self.assertEqual(set(self.pages), {"index.html", "classes.html"})
+        for name, page in self.pages.items():
+            self.assertLess(len(page), 60000, name)
+            self.assertIsNone(re.search("[֐-ࣿיִ-﷿ﹰ-﻿]", page), name)
+            self.assertFalse([p.pattern for p in EXTERNAL if p.search(page)], name)
+            self.assertNotIn("%%", page, name)
+
+    def test_visa_summary_embeds_the_source_counts(self):
+        data = self.embedded("index.html")
+        for scorer in ("descriptor", "dinov2-engine", "dinov2-native"):
+            for rule in ("as_shipped", "full", "full_pac"):
+                src = self.record["pooled"][scorer][rule]
+                self.assertEqual(data["pooled"][scorer][rule]["det"][:2], [src["detection"]["x"], src["detection"]["n"]])
+                self.assertEqual(data["pooled"][scorer][rule]["fa"][:2], [src["false_alert"]["x"], src["false_alert"]["n"]])
+        classes = self.embedded("classes.html")
+        self.assertEqual([c for c, _ in classes["classes"]], list(self.record["splits"]))
+
+    def test_visa_attribution_is_verbatim(self):
+        from mizan.visa import ATTRIBUTION
+        for name, page in self.pages.items():
+            self.assertIn(ATTRIBUTION, page, name)
+            self.assertIn('href="https://creativecommons.org/licenses/by/4.0/"', page, name)
+
+    def test_visa_examples_are_four_images_or_none(self):
+        examples = self.embedded("index.html")["examples"]
+        self.assertEqual(set(examples), {"caught", "missed", "false_alert", "passed"})
+        for value in examples.values():
+            self.assertTrue(value is None or value[3].startswith("/9j/"), value)   # a base64 JPEG
+
+    def test_visa_build_refuses_a_failed_gate_or_an_unrepeated_run(self):
+        import copy
+        import json
+        import tempfile
+        from pathlib import Path
+        from scripts.build_visa_report import build
+        for change in ({"gate": {"passed": False}}, {"repeat_run": {"identical": False, "process": "x"}}, {"repeat_run": None}):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as d:
+                bad = {**copy.deepcopy(self.record), **change}
+                (Path(d) / "basira.json").write_text(json.dumps(bad), encoding="utf-8")
+                with self.assertRaises(SystemExit):
+                    build(Path(d), Path(d))
