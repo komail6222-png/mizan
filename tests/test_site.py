@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import numpy as np
+
 from mizan.core.contract import strict_load
 from scripts import build_site
 
@@ -337,6 +339,102 @@ class RealImageFactsTests(unittest.TestCase):
         self.assertNotRegex(page, r"All data is generated\.|كل البيانات مولّدة،? ولا شيء")
         limits = re.search(r'<section class="band" id="limits">(.*?)</section>', page, re.S).group(1)
         self.assertIn("VisA", limits)
+
+
+OPSD = json.loads((ROOT / "reports/opsd/rasid.json").read_bytes())
+FORBIDDEN = ("euro", "EUR", "€", "saving", "money")
+
+
+def opsd_changed(*edits):
+    """The OPSD record with each (path, value) edit applied."""
+    record = copy.deepcopy(OPSD)
+    for path, value in edits:
+        node = record
+        for key in path[:-1]:
+            node = node[key]
+        node[path[-1]] = value
+    return record
+
+
+class RealLoadFactsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.packet = strict_load((ROOT / "reports/demo/demo_results.json").read_bytes())
+        cls.figures = build_site.facts(cls.packet)
+
+    def test_facts_read_the_real_load_evaluation(self):
+        f = build_site.opsd_facts(OPSD)
+        self.assertEqual({k: v for k, v in self.figures.items() if k.startswith("opsd_")}, f)
+        s, p = OPSD["sites"], OPSD["pooled"]
+        share = {a["a"] if "a" in a else None: a for a in p["accuracy"]}
+        computed = {
+            "opsd_sites": str(len(s)),
+            "opsd_days": build_site.group(sum(x["counts"]["target_days"] for x in s.values())),
+            "opsd_days_wh": build_site.group(s["industrial1"]["counts"]["target_days"]),
+            "opsd_days_rb": build_site.group(s["industrial3"]["counts"]["target_days"]),
+            "opsd_err_chronos": build_site.percent(np.mean([x["forecast"]["chronos_mae_share_of_load"] for x in s.values()])),
+            "opsd_err_ridge": build_site.percent(np.mean([x["forecast"]["ridge_mae_share_of_load"] for x in s.values()])),
+            "opsd_share_best": build_site.percent(p["share"]["chronos_risk_neutral"]["mean"]),
+            "opsd_share_cand": build_site.percent(p["share"]["candidate"]["mean"]),
+            "opsd_share_naive": build_site.percent(p["share"]["seasonal_naive"]["mean"]),
+            "opsd_verified": build_site.group(sum(pl["verified_feasible"] for x in s.values() for pl in x["plans"].values())),
+            "opsd_plans": build_site.group(sum(pl["kept_days"] + pl["rejected"] + pl["no_plan"] for x in s.values() for pl in x["plans"].values())),
+        }
+        self.assertEqual({k: f[k] for k in computed}, computed)
+        gap = next(a for a in p["accuracy"] if (a["a"], a["b"]) == ("chronos_mae", "ridge_mae"))
+        self.assertEqual((f["opsd_err_gap"], f["opsd_err_gap_lo"], f["opsd_err_gap_hi"]),
+                         tuple(build_site.signed(v * 100, 1) for v in (gap["mean"], *gap["ci95"])))
+        cand = next(c for c in p["paired"] if (c["a"], c["b"]) == ("candidate", "seasonal_naive"))
+        self.assertEqual(f["opsd_cand_naive"], build_site.signed(cand["mean"] * 100, 1) + "%")
+        self.assertEqual(len(share), 2)
+
+    def test_phrases_follow_the_interval(self):
+        path = ["pooled", "paired", 0]
+        for (lo, hi), en in [((0.01, 0.02), "costs more than"), ((-0.02, -0.01), "costs less than"), ((-0.01, 0.01), "cannot be told apart from")]:
+            with self.subTest(interval=(lo, hi)):
+                reading = "higher" if lo > 0 else "lower" if hi < 0 else "not resolved"
+                f = build_site.opsd_facts(opsd_changed((path + ["ci95"], [lo, hi]), (path + ["reading"], reading),
+                                                       (path + ["mean"], (lo + hi) / 2)))
+                self.assertEqual(f["opsd_cand_naive_en"], en)
+                self.assertNotEqual(f["opsd_cand_naive_ar"], "")
+
+    def test_wording_that_no_longer_matches_the_record_stops_the_build(self):
+        cases = {
+            "a gate that did not pass": (opsd_changed((["gate", "passed"], False)), "gate passed"),
+            "a repeat that was not identical": (opsd_changed((["repeat_run", "identical"], False)), "repeat"),
+            "a repeat in the same process": (opsd_changed((["repeat_run", "process"], "the same process (injected forecaster)")), "second process"),
+            "an injected forecaster": (opsd_changed((["identity", "chronos"], {"note": "injected forecaster"})), "second process"),
+            "a quick run": (opsd_changed((["quick"], {"days_per_site": 10, "draws": 50})), "full run"),
+            "another protocol": (opsd_changed((["protocol_digest"], "0" * 64)), "sealed"),
+            "no seal commit": (opsd_changed((["seal_commit"], None)), "sealed"),
+            "a day count that disagrees with the rows": (opsd_changed((["sites", "industrial1", "counts", "target_days"], 1)), "days"),
+            "another set of sites": (opsd_changed((["sites"], {"industrial1": OPSD["sites"]["industrial1"]})), "two business sites"),
+            "a reading that disagrees with its interval": (opsd_changed((["pooled", "paired", 0, "reading"], "lower")), "reads"),
+            "an accuracy reading that disagrees with its interval": (opsd_changed((["pooled", "accuracy", 1, "reading"], "higher")), "reads"),
+        }
+        for name, (record, message) in cases.items():
+            with self.subTest(name), self.assertRaisesRegex(SystemExit, message):
+                build_site.opsd_facts(record)
+
+    def test_landing_shows_the_real_load_block_in_both_languages(self):
+        page, _ = build_site.landing_html(self.packet, self.figures)
+        block = re.search(r'<div class="models" id="opsd">(.*?)<!-- /opsd -->', page, re.S)
+        self.assertIsNotNone(block, "the Real load block is missing")
+        keys = [k for k in self.figures if k.startswith("opsd_") and not k.endswith(("_en", "_ar"))]
+        for lang, heading in [("en", "Real load: RASID on two business sites"), ("ar", "أحمال حقيقية: راصد في موقعين تجاريين")]:
+            spans = "".join(re.findall(rf'<span data-l="{lang}">(.*?)</span>', block.group(1), re.S))
+            with self.subTest(lang=lang):
+                self.assertIn(heading, spans)
+                for key in keys + [f"opsd_err_phrase_{lang}", f"opsd_ridge_naive_{lang}", f"opsd_cand_naive_{lang}"]:
+                    self.assertIn(self.figures[key], block.group(1), key)
+                self.assertIn("CC BY 4.0", spans)
+        text = block.group(1).replace("Europe", "")
+        for word in FORBIDDEN:
+            self.assertNotIn(word, text)
+        self.assertIn('href="report/opsd/"', block.group(1))
+        self.assertIn("report/opsd/index.html", build_site.COPIED)
+        limits = re.search(r'<section class="band" id="limits">(.*?)</section>', page, re.S).group(1)
+        self.assertIn("OPSD", limits)
 
 
 if __name__ == "__main__":

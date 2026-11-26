@@ -195,6 +195,35 @@ Resources, measured on the recording machine (Intel Core i7-13645HX, WSL2 with 7
 - **The real run** with its repeat in a second process took 4,562.9 s (76 minutes) and peaked at 594.6 MiB resident memory (`reports/visa/runs.json`).
 - **The dry run** scored the 8,659 train normals once per scorer in 1,825.1 s: the descriptor 114.4 s, DINOv2-small on the engine input 783.2 s, at native input 840.8 s.
 
+## RASID on real load (`reports/opsd/`)
+
+RASID's unchanged forecaster, planner and verifier on two business sites from the Open Power System Data household package (CC BY 4.0, real measurements, attribution in `docs/DATA_LICENSES.md`), under a protocol sealed before any site day was forecast. Results and disclosures: `docs/RELEASE_3.2.md`, part 2. The data file is not in the repository. Fetch it into the git-ignored `var/opsd/` (torch-free, `.venv`):
+
+```bash
+python scripts/fetch_opsd.py --out var/opsd
+```
+
+This downloads the 60-minute file (15,654,559 bytes) and keeps it only when its size and SHA-256 match the values pinned in `mizan/opsd.py`. A file already present is verified, never replaced.
+
+The evaluation needs the Chronos pin imported into `var/hf` (`.venv-hf/bin/python -m mizan hf fetch rasid`, see above). Run it into a scratch directory with its repeat run, then compare with the published record:
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MIZAN_HF_MODELS=var/hf .venv-hf/bin/python scripts/evaluate_opsd.py \
+    --data var/opsd --models var/hf --out /tmp/opsd --repeat \
+    --seal 72e51d5099d9c5ebbfeb67ee4a0ca534fae2ce30 --reason "reproduction"
+diff <(python -m json.tool reports/opsd/rasid.json) <(python -m json.tool /tmp/opsd/rasid.json)
+```
+
+- **Before any site day is forecast**, a run does three things. It checks that `mizan.opsd.PROTOCOL` still has its sealed digest and that `--seal` names the commit that introduced it. It verifies the file. It runs the generated-site gate: the day loop must reproduce `reports/evaluation/rasid.json` and the Chronos side of `reports/hf/rasid.json`. A failed gate exits with code 2 and writes nothing.
+- **Fields that differ on another machine by design:** `elapsed_seconds`, `environment`, `repeat_run` (its process note), `provenance` and `identity.chronos.manifest_sha256`. Chronos quantiles computed on another CPU or library build may differ in their last bits, and so may the plans and costs derived from them.
+- **The run log:** every run that forecasts site days, a check run included, is appended to `reports/opsd/runs.json`. It writes a "started" entry before the first site day and a "finished" entry once its record is written. `--child` is internal: only `--repeat` starts it.
+- **The published command** is the same with `--out reports/opsd`, which is written only with `--repeat`.
+- **After a new evidence run,** rebuild the pages with `python scripts/build_opsd_report.py`, `python scripts/build_report.py` and `python scripts/build_site.py`.
+
+Resources, measured on the recording machine (Intel Core i7-13645HX, WSL2 with 7 GiB of memory, CPU only):
+- **The real run,** with its repeat in a second process, took 505.9 s and peaked at 607.2 MiB resident memory (`reports/opsd/runs.json`). The generated-site gate alone takes about 17 s.
+- **On disk,** the data file takes 15.7 MB.
+
 ## Recovery and qualification
 
 Use `python -m mizan backup BACKUP_DIR` and `python -m mizan restore BACKUP_DIR NEW_DATA_DIR` offline against the intended store. Backups contain the database and referenced blobs. Retain the operator's existing trust root separately for recovery. Restore verifies the signature, database and referenced objects and creates a new generation. It checks current or explicitly supplied trusted heads. Restoring an older snapshot after further activity requires separate history reconciliation.

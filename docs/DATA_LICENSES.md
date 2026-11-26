@@ -1,6 +1,6 @@
 # Data licences
 
-MIZAN's bundled datasets are generated fixtures, written by the code in this repository and covered by its Apache-2.0 licence. One dataset is real and comes from elsewhere.
+MIZAN's bundled datasets are generated fixtures, written by the code in this repository and covered by its Apache-2.0 licence. Two datasets are real and come from elsewhere.
 
 ## VisA (BASIRA on real images)
 
@@ -17,6 +17,19 @@ VisA (Zou et al., 2022, "SPot-the-Difference Self-Supervised Pre-training for An
 - **Status of the results:** the results on this data describe these public images only. They are not MIZAN's own data and certify no production line.
 
 MVTec AD was considered and not used: its licence (CC BY-NC-SA 4.0) does not allow commercial use.
+
+## Open Power System Data household package (RASID on real load)
+
+Open Power System Data. 2020. Data Package Household Data. Version 2020-04-15. https://data.open-power-system-data.org/household_data/2020-04-15/. Primary data from the CoSSMic project (Konstanz, Germany). CC BY 4.0, https://creativecommons.org/licenses/by/4.0/.
+
+- **Source:** the 60-minute file `household_data_60min_singleindex.csv` (15,654,559 bytes, SHA-256 `15956440b27465686eae2abf5895cbc3dab80f934a891bcb2f4f944428e97d60`).
+- **Licence:** Creative Commons Attribution 4.0 International. Commercial use is allowed, with attribution.
+- **What this repository holds:** the file is not in this repository. `scripts/fetch_opsd.py` downloads it into the git-ignored `var/opsd/` and keeps it only when its size and SHA-256 match the values above. `reports/opsd/rasid.json` holds per-day results derived from two of its sites, `industrial1` (a warehouse) and `industrial3` (a research-institute building).
+- **Changes made:**
+  - Hourly energies are differenced from the cumulative meter readings.
+  - Hours the package marks as interpolated, copied days and straight-line fills are excluded.
+  - Each site's load is reconstructed as grid import plus solar. A check in the data shows that neither site ever exported.
+- **Status of the results:** they describe these two sites in 2015–2017 only, in RASID's illustrative tariff units. They are not MIZAN's own data, and no bill or currency follows from them.
 
 ## Typeface
 
