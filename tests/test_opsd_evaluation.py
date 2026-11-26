@@ -67,5 +67,141 @@ class StatisticsTests(unittest.TestCase):
         self.assertEqual(cm.exception.code, "OPSD_NO_DAYS")
 
 
+def stub_forecaster(load, pv, levels):
+    """A quantile forecaster for tests: yesterday's last 24 hours, spread ±5% across the levels."""
+    base = np.stack([np.asarray(load)[-24:], np.asarray(pv)[-24:]], axis=1)
+    spread = 1 + 0.05 * np.linspace(-1, 1, len(levels))
+    return base[..., None] * spread
+
+
+class GeneratedSite:
+    """The generated site as rasid_hf reads it: 102 days of examples.electricity, UTC days from 2026-02-12."""
+    def __init__(self):
+        from datetime import datetime, timedelta, timezone
+        from mizan import examples
+        from mizan.rasid.forecast import records
+        self.raw = examples.electricity(102)
+        rows = records(self.raw)
+        self.actual = {t: (l, p) for t, k, l, p in rows}
+        self.origin0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        self.td = timedelta
+
+    def origins(self, first, count):
+        return [self.origin0 + self.td(days=42 + i) for i in range(first, first + count)]
+
+    def plan(self, runs, forecaster=stub_forecaster, rows_at=None):
+        from mizan import examples
+        from mizan.opsd_evaluation import plan_days
+        return plan_days(runs, rows_at or (lambda o: self.raw), lambda t: self.actual[t], examples.settings(24), forecaster,
+                         grid_at=lambda o: [o + self.td(hours=h) for h in range(24)], month_of=lambda o: (o.year, o.month))
+
+
+class HarnessTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.site = GeneratedSite()
+
+    def test_day_problem_equals_the_shipped_problem_at_scale_one(self):
+        from mizan import evaluation, examples
+        from mizan.opsd_evaluation import day_problem
+        from mizan.rasid.forecast import forecast, records
+        origin = self.site.origins(0, 1)[0]
+        grid = [origin + self.site.td(hours=h) for h in range(24)]
+        f = forecast(records(self.site.raw), origin, grid, 4)
+        y = np.array([self.site.actual[t] for t in grid])
+        for name in evaluation.POLICIES:
+            with self.subTest(name):
+                self.assertEqual(day_problem(name, f, y, 40., 3., examples.settings(24)),
+                                 evaluation.policy_problem(name, f, y, 40., 3.))
+
+    def test_plan_days_reproduces_rasid_hf_with_the_same_forecaster(self):
+        from mizan.hf_evaluation import POLICIES_HF, rasid_hf
+        shipped = rasid_hf(stub_forecaster, days=4)["origins"]
+        ours = self.site.plan([self.site.origins(0, 4)])
+        self.assertEqual(ours["run_lengths"], [4])
+        fields = ["date", "ridge_mae", "naive_mae", "coverage_80_load", "ridge_mean_pinball", "chronos_mae", "context_hours",
+                  *[k + s for k in POLICIES_HF for s in ("_cost", "_status")]]
+        self.assertEqual([{k: r[k] for k in fields} for r in ours["rows"]], [{k: r[k] for k in fields} for r in shipped])
+
+    def test_refusal_drops_the_day_for_all_and_restarts_the_run(self):
+        from unittest import mock
+        import mizan.opsd_evaluation as oe
+        from mizan.hf_evaluation import POLICIES_HF
+        real = oe.solve
+        n = len(POLICIES_HF)
+        origins = self.site.origins(0, 5)
+        for refused_days, rows_left, runs in (((2,), [0, 1, 3, 4], [2, 2]), ((2, 3), [0, 1, 4], [2, 1]), ((0,), [1, 2, 3, 4], [4])):
+            calls = {"k": 0}
+            def solve(p, _days=refused_days):
+                k = calls["k"]
+                calls["k"] += 1
+                if k // n in _days and k % n == 1:
+                    raise Refused("NO_INCUMBENT", "stub")
+                return real(p)
+            with self.subTest(refused=refused_days), mock.patch.object(oe, "solve", solve):
+                result = self.site.plan([origins])
+                self.assertEqual([r["date"] for r in result["rows"]], [origins[i].date().isoformat() for i in rows_left])
+                self.assertEqual(result["run_lengths"], runs)
+                self.assertEqual(result["planning_refused"], [{"date": origins[d].date().isoformat(), "policy": POLICIES_HF[1],
+                                                               "cause": "NO_INCUMBENT"} for d in refused_days])
+        # The day after a refusal starts afresh: the same costs as a run that begins on that day.
+        calls = {"k": 0}
+        def solve_once(p):
+            k = calls["k"]
+            calls["k"] += 1
+            if k // n == 2 and k % n == 1:
+                raise Refused("NO_INCUMBENT", "stub")
+            return real(p)
+        with mock.patch.object(oe, "solve", solve_once):
+            after = self.site.plan([origins])["rows"][2:]
+        fresh = self.site.plan([origins[3:]])["rows"]
+        self.assertEqual([[r[k + "_cost"] for k in POLICIES_HF] for r in after], [[r[k + "_cost"] for k in POLICIES_HF] for r in fresh])
+        self.assertTrue(all(after[0][k + "_start_peak"] == 0 for k in POLICIES_HF))
+
+    def test_ridge_refusal_is_counted_not_fatal(self):
+        origins = self.site.origins(0, 3)
+        short = lambda o: self.site.raw[-24 * 5:] if o == origins[1] else self.site.raw   # noqa: E731
+        result = self.site.plan([origins], rows_at=short)
+        self.assertEqual(result["ridge_refused"], {"HISTORY": 1})
+        self.assertEqual([r["date"] for r in result["rows"]], [origins[0].date().isoformat(), origins[2].date().isoformat()])
+        self.assertEqual(result["run_lengths"], [1, 1])
+
+    def test_month_start_resets_only_the_peak(self):
+        from mizan.hf_evaluation import POLICIES_HF
+        origins = self.site.origins(15, 4)           # 2026-02-27 .. 2026-03-02
+        rows = self.site.plan([origins])["rows"]
+        march = [r for r in rows if r["date"] >= "2026-03-01"]
+        self.assertTrue(all(march[0][k + "_start_peak"] == 0 for k in POLICIES_HF))
+        self.assertTrue(all(rows[1][k + "_start_peak"] > 0 for k in POLICIES_HF if k != "no_battery" or True))
+        self.assertEqual(march[0]["candidate_start_charge"], rows[1]["candidate_start_charge"])   # the charge carries
+        self.assertEqual(rows[0]["run"], march[0]["run"])
+
+    def test_generated_gate_fails_closed(self):
+        import copy
+        import json
+        from pathlib import Path
+        from mizan.opsd_evaluation import gate_check
+        root = Path(__file__).resolve().parents[1]
+        ridge = json.loads((root / "reports/evaluation/rasid.json").read_text(encoding="utf-8"))
+        hf = json.loads((root / "reports/hf/rasid.json").read_text(encoding="utf-8"))
+        by_date = {r["date"]: r for r in hf["model"]["origins"]}
+        result = {"target_days": ridge["target_days"],
+                  "forecast": {"ridge_mae_kw": ridge["ridge_mae_kw"], "seasonal_naive_mae_kw": ridge["seasonal_naive_mae_kw"],
+                               **hf["model"]["forecast"]},
+                  "decision_quality": {**ridge["decision_quality"], **hf["model"]["decision_quality"]},
+                  "origins": [{**r, **by_date[r["date"]]} for r in ridge["origins"]]}
+        self.assertTrue(gate_check(result, ridge, hf)["passed"])
+        bad = copy.deepcopy(ridge)
+        bad["decision_quality"]["candidate"]["total_cost"] *= 1.01
+        gate = gate_check(result, bad, hf)
+        self.assertFalse(gate["passed"])
+        self.assertIn("decision_quality.candidate.total_cost", gate["ridge"]["mismatches"])
+        bad_hf = copy.deepcopy(hf)
+        bad_hf["model"]["decision_quality"]["chronos"]["total_cost"] *= 1.01
+        gate = gate_check(result, ridge, bad_hf)
+        self.assertFalse(gate["passed"])
+        self.assertIn("decision_quality.chronos.total_cost", gate["chronos"]["mismatches"])
+
+
 if __name__ == "__main__":
     unittest.main()
