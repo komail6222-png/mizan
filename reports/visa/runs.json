@@ -16,5 +16,18 @@
    "dinov2-native": 840.8
   },
   "train_images_per_scorer": 8659
+ },
+ {
+  "commit": "eb23ddf8454913a7bcedcef0e2061172b9635131",
+  "date": "2026-11-26T13:52:44Z",
+  "dirty": false,
+  "dry_run": false,
+  "elapsed_seconds": 4562.9,
+  "evidence_dir": true,
+  "peak_rss_mib": 594.6,
+  "protocol_digest": "2175caee24d3bd7102fb845560621cefd611f81a5ed9c11a6a6b5135370e705a",
+  "reason": "sealed protocol, first real run",
+  "repeat_identical": true,
+  "seal_commit": "13827ee6b1d5105c191eff3e9658d67f1ca44e62"
  }
 ]
