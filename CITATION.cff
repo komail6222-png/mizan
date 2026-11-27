@@ -12,8 +12,8 @@ type: software
 authors:
   - given-names: Komail
     family-names: Ahmed
-version: 3.1.0
-date-released: 2026-11-25
+version: 3.2.0
+date-released: 2026-11-27
 license: Apache-2.0
 repository-code: "https://github.com/komail6222-png/mizan"
 url: "https://komail6222-png.github.io/mizan/"

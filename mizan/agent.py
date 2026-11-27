@@ -17,7 +17,7 @@ import sys
 
 from .core.contract import Refused, canonical, digest, strict_load
 
-SERVER = {"name": "mizan", "title": "MIZAN verifiable decisions", "version": "3.1.0"}
+SERVER = {"name": "mizan", "title": "MIZAN verifiable decisions", "version": "3.2.0"}
 VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
 DEFAULT_BUDGET = 25
 INSTRUCTIONS = (

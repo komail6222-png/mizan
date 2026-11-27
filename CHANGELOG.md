@@ -1,8 +1,8 @@
 # Changelog
 
-All notable changes to MIZAN. Detailed notes and evidence for each release are in `docs/`. Releases up to 3.0.0 are dated 21 November 2026; 3.1.0 is dated 25 November 2026; 3.2.0 is not yet released.
+All notable changes to MIZAN. Detailed notes and evidence for each release are in `docs/`. Releases up to 3.0.0 are dated 21 November 2026; 3.1.0 is dated 25 November 2026; 3.2.0 is dated 27 November 2026.
 
-## [3.2.0] - unreleased
+## [3.2.0] - 2026-11-27
 
 Real data under sealed protocols: BASIRA on the public VisA images, and RASID on the real load of two business sites from the Open Power System Data household package. Details: [`docs/RELEASE_3.2.md`](docs/RELEASE_3.2.md).
 

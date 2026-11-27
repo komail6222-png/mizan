@@ -1,4 +1,4 @@
-# Release 3.2.0 (unreleased) application tests — local run (26 November 2026)
+# Release 3.2.0 application tests — local run (27 November 2026)
 # Python 3.12.16 (uv) · SQLite 3.53.1 · NumPy 2.3.5 · SciPy 1.17.0 · FastAPI 0.141.1 · httpx 0.28.1 · PyMuPDF 1.26.6
 # Ubuntu 26.04.1 LTS under WSL2 (kernel 6.18.58.1) on Windows 11, Intel Core i7-13645HX, x86_64
 # Main environment (.venv, every dependency in requirements.txt, no torch): 289 tests, 285 passed, 4 skipped.
@@ -6,8 +6,8 @@
 # chronos-forecasting and MIZAN_HF_MODELS. They were run in the optional .venv-hf (requirements-hf.txt: torch 2.15.0+cpu,
 # transformers 4.57.6, chronos-forecasting 2.3.2, Python 3.12.16) against the verified checkpoints:
 #   MIZAN_HF_MODELS=var/hf .venv-hf/bin/python -m unittest tests.test_hf_models.LoaderTests -v
-# .venv-hf result: Ran 4 tests in 2.269s: OK (test_chronos_quantiles, test_dinov2_grid, test_e5_normalised, test_identity_matches_pin)
-# Python 3.13.18 result (uv, SQLite 3.53.1, the same pins, the same 4 loader tests skipped): Ran 289 tests in 91.271s: OK (skipped=4)
+# .venv-hf result: Ran 4 tests in 2.768s: OK (test_chronos_quantiles, test_dinov2_grid, test_e5_normalised, test_identity_matches_pin)
+# Python 3.13.18 result (uv, SQLite 3.53.1, the same pins, the same 4 loader tests skipped): Ran 289 tests in 91.693s: OK (skipped=4)
 # MCP conformance used the official mcp client 2.3.0.
 # The VisA and OPSD tests (tests/test_visa*.py, tests/test_opsd*.py) use generated stand-ins; no VisA image and no OPSD file is read.
 # Previous records: 3.1.0 (25 November 2026), 172 tests, 168 passed and 4 skipped; 3.0 local verification run (21 November 2026),
@@ -256,8 +256,27 @@ test_protocol_digest_is_sealed (test_visa.ProtocolTests.test_protocol_digest_is_
 test_split_is_deterministic_and_disjoint (test_visa.ProtocolTests.test_split_is_deterministic_and_disjoint) ... ok
 test_split_refuses_a_class_too_small_for_the_protocol (test_visa.ProtocolTests.test_split_refuses_a_class_too_small_for_the_protocol) ... ok
 test_a_server_that_ignores_or_misplaces_the_range_is_refused (test_visa.RangedDownloadTests.test_a_server_that_ignores_or_misplaces_the_range_is_refused) ... ----------------------------------------
-Exception occurred during processing of request from ('127.0.0.1', 36466)
+Exception occurred during processing of request from ('127.0.0.1', 47250)
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 47268)
 Traceback (most recent call last):
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/socketserver.py", line 766, in __init__
+    self.handle()
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/http/server.py", line 428, in handle_one_request
+    method()
+  File "/home/komail/projects/mizan/tests/test_visa.py", line 163, in do_GET
+    self.wfile.write(body)
+  File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionResetError: [Errno 104] Connection reset by peer
+Traceback (most recent call last):
+----------------------------------------
   File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/socketserver.py", line 697, in process_request_thread
     self.finish_request(request, client_address)
   File "/home/komail/.local/share/uv/python/cpython-3.12.16-linux-x86_64-gnu/lib/python3.12/socketserver.py", line 362, in finish_request
@@ -324,6 +343,6 @@ test_rewritten_local_history_is_detected (test_witness.WitnessTests.test_rewritt
 test_witness_refuses_malformed_forked_and_foreign_batches (test_witness.WitnessTests.test_witness_refuses_malformed_forked_and_foreign_batches) ... ok
 
 ----------------------------------------------------------------------
-Ran 289 tests in 93.862s
+Ran 289 tests in 93.774s
 
 OK (skipped=4)
