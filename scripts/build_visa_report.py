@@ -116,7 +116,7 @@ const ci=(lo,hi)=>lo===null?"–":`${pct(lo)} to ${pct(hi)}`;
 const rate=a=>a[1]?`${fmt(a[0])} of ${fmt(a[1])} · ${pct(a[0]/a[1])}`:"–";
 const put=(id,s)=>{document.getElementById(id).textContent=s};"""
 
-SUMMARY_PAGE = r"""<div class="kicker">Prepared for release 3.2, not yet released · real public images (VisA)</div>
+SUMMARY_PAGE = r"""<div class="kicker">Release 3.2 · real public images (VisA)</div>
 <h1>BASIRA on real images</h1>
 <p class="lede" id="visa-lede"></p>
 <section id="visa-section">
@@ -180,7 +180,7 @@ const e=D.env;put("foot",`Generated from reports/visa/basira.json · protocol di
 </html>
 """
 
-CLASSES_PAGE = r"""<div class="kicker">Prepared for release 3.2, not yet released · real public images (VisA)</div>
+CLASSES_PAGE = r"""<div class="kicker">Release 3.2 · real public images (VisA)</div>
 <h1>BASIRA on VisA, per class</h1>
 <p class="lede">Each class is one product line with its own reference bank and calibration set. Rates carry exact 95% intervals; AUROC carries a bootstrap interval. The summary is on <a href="index.html">BASIRA on real images</a>.</p>
 <section id="visa-classes-section">

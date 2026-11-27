@@ -89,7 +89,7 @@ def summary(record):
 ATTRIBUTION_HTML = (f'<p class="lede" id="opsd-attribution">{html.escape(ATTRIBUTION, quote=False)} '
                     f'Licence: <a href="{LICENCE}">{LICENCE}</a>. Data: <a href="{SOURCE}">data.open-power-system-data.org</a>.</p>')
 
-PAGE = r"""<div class="kicker">Prepared for release 3.2, not yet released · real public measurements (OPSD)</div>
+PAGE = r"""<div class="kicker">Release 3.2 · real public measurements (OPSD)</div>
 <h1>RASID on real load</h1>
 <p class="lede" id="opsd-lede"></p>
 <section id="opsd-section">

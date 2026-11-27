@@ -1,6 +1,6 @@
-# MIZAN 3.2 (unreleased) | Real data: BASIRA on images, RASID on load
+# MIZAN 3.2 | Real data: BASIRA on images, RASID on load
 
-Prepared 26 November 2026; not yet released. Builds on 3.1. 3.2 has two parts:
+27 November 2026. Builds on 3.1. 3.2 has two parts:
 - **Part 1** (below, merged from the `visa-evaluation` branch) runs BASIRA on real photographs, the public VisA dataset.
 - **Part 2** ([RASID on real load](#part-2--rasid-on-real-load-opsd), from the `rasid-opsd` branch) runs RASID on the real load and solar of two business sites from the Open Power System Data household package.
 
